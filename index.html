@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CV & JD Reviewer AI</title>
+    <meta name="description" content="Automated CV/Resume review for corporate cybersecurity roles using AI.">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Phosphor Icons (Alternative to Lucide for Vanilla JS) -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <!-- Core Styles -->
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body class="dark-theme">
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header glass-panel">
+            <div class="logo">
+                <i class="ph ph-shield-check"></i>
+                <h1 data-i18n="app_title">CyberScan AI</h1>
+            </div>
+            <div class="header-controls">
+                <!-- Header controls removed per request -->
+            </div>
+        </header>
+
+        <!-- Main Workspace -->
+        <main class="workspace">
+            <!-- Left Column: Inputs -->
+            <section class="input-section glass-panel">
+                <h2 data-i18n="upload_documents">Upload Documents</h2>
+
+                <div class="upload-zones">
+                    <!-- CV Upload -->
+                    <div class="upload-zone" id="cv-dropzone">
+                        <input type="file" id="cv-upload" accept=".pdf,.docx" hidden>
+                        <i class="ph ph-file-text upload-icon"></i>
+                        <h3 data-i18n="upload_cv_title">Candidate CV/Resume</h3>
+                        <p data-i18n="upload_desc">Drag & drop or click to upload PDF/DOCX</p>
+                        <div class="file-status" id="cv-status"></div>
+                    </div>
+
+                    <!-- JD Upload -->
+                    <div class="upload-zone" id="jd-dropzone">
+                        <input type="file" id="jd-upload" accept=".pdf,.docx" hidden>
+                        <i class="ph ph-briefcase upload-icon"></i>
+                        <h3 data-i18n="upload_jd_title">Job Description (Optional)</h3>
+                        <p data-i18n="upload_desc">Drag & drop or click to upload PDF/DOCX</p>
+                        <div class="file-status" id="jd-status"></div>
+                    </div>
+                </div>
+
+                <button id="analyze-btn" class="primary-btn pulse-animation" disabled>
+                    <i class="ph ph-sparkle"></i>
+                    <span data-i18n="analyze_btn">Analyze Candidate</span>
+                </button>
+            </section>
+
+            <!-- Right Column: Results Dashboard -->
+            <section class="results-section glass-panel">
+                <div class="results-placeholder" id="results-idle">
+                    <i class="ph ph-robot placeholder-icon"></i>
+                    <h3 data-i18n="waiting_analysis">Awaiting Documents for Analysis</h3>
+                    <p data-i18n="waiting_desc">Select a role and upload a CV to generate AI insights.</p>
+                </div>
+
+                <div class="loading-state hidden" id="results-loading">
+                    <div class="spinner"></div>
+                    <p data-i18n="analyzing">Scanning document structure and evaluating fit...</p>
+                </div>
+
+                <div class="dashboard-content hidden" id="results-dashboard">
+                    <div class="candidate-header" style="justify-content: space-between; width: 100%;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <i class="ph ph-user-circle"></i>
+                            <h2><span id="candidate-name">Unknown</span></h2>
+                        </div>
+                        <button id="export-pdf-btn" class="secondary-btn">
+                            <i class="ph ph-download-simple"></i> Export PDF
+                        </button>
+                    </div>
+
+                    <div class="verdict-banner" id="verdict-banner">
+                        <div class="verdict-score">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" class="circular-chart">
+                                <path class="circle-bg"
+                                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                <path class="circle" id="score-circle" stroke-dasharray="0, 100"
+                                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                <text x="18" y="20.35" class="percentage" id="score-text">0%</text>
+                            </svg>
+                        </div>
+                        <div class="verdict-details">
+                            <h2 id="final-decision">Strong Hire</h2>
+                            <p id="decision-subtitle">Decision Output</p>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-card summary-card">
+                        <h3><i class="ph ph-article"></i> <span data-i18n="report_summary">Executive Summary</span></h3>
+                        <p id="report-summary-text"></p>
+                    </div>
+
+                    <div class="dashboard-grid granular-scores-grid">
+                        <div class="dashboard-card">
+                            <h3><i class="ph ph-buildings"></i> Industry Fit</h3>
+                            <div class="granular-score-wrapper">
+                                <span class="granular-score" id="industry-fit-score">0/100</span>
+                                <p class="granular-rationale" id="industry-fit-rationale"></p>
+                            </div>
+                        </div>
+                        <div class="dashboard-card">
+                            <h3><i class="ph ph-check-square-offset"></i> JD Requirement Match</h3>
+                            <div class="granular-score-wrapper">
+                                <span class="granular-score" id="jd-match-score">0/100</span>
+                                <p class="granular-rationale" id="jd-match-rationale"></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-grid">
+                        <div class="dashboard-card pros-card">
+                            <h3><i class="ph ph-thumbs-up"></i> <span data-i18n="pros">Pros / Strengths</span></h3>
+                            <ul id="pros-list"></ul>
+                        </div>
+                        <div class="dashboard-card cons-card">
+                            <h3><i class="ph ph-thumbs-down"></i> <span data-i18n="cons">Cons / Weaknesses</span></h3>
+                            <ul id="cons-list"></ul>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-card detailed-eval-card">
+                        <h3><i class="ph ph-magnifying-glass"></i> <span data-i18n="detailed_eval">Detailed
+                                Evaluation</span></h3>
+                        <p id="detailed-eval-text"></p>
+                    </div>
+
+                    <div class="dashboard-card conclusion-card">
+                        <h3><i class="ph ph-flag-checkered"></i> <span data-i18n="conclusion">Conclusion</span></h3>
+                        <p id="conclusion-text"></p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <!-- PDF.js for parsing PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <!-- Mammoth.js for parsing DOCX -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.5.1/mammoth.browser.min.js"></script>
+    <!-- Html2Pdf for PDF Generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <!-- Application Logic -->
+    <script src="js/i18n.js"></script>
+    <script src="js/parser.js"></script>
+    <script src="js/ai-mock.js"></script>
+    <script src="js/app.js"></script>
+</body>
+
+</html>
