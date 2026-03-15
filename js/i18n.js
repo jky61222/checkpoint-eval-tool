@@ -1,6 +1,6 @@
 const translations = {
     en: {
-        app_title: "CyberScan AI",
+        app_title: "CP Scan AI",
         upload_documents: "Upload Documents",
         upload_cv_title: "Candidate CV/Resume",
         upload_jd_title: "Job Description",
