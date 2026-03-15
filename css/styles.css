@@ -548,13 +548,26 @@ body.dark-theme {
         overflow: visible !important;
     }
 
-    /* Ensure Cards don't split across pages */
-    .dashboard-card,
+    /* Tighten Layout for PDF Space Optimization */
+    .dashboard-grid {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 0 !important;
+    }
+
+    /* Ensure Cards don't split across pages and remove excess gaps */
+    .dashboard-card {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        margin-bottom: 0.5rem !important; /* Reduced from 2rem to remove blank space */
+        display: block !important;
+    }
+
     .verdict-banner {
         page-break-inside: avoid !important;
         break-inside: avoid !important;
-        margin-bottom: 2rem !important;
-        display: block !important;
+        margin-bottom: 0.5rem !important; /* Reduced to bring exec summary closer */
+        display: flex !important;
     }
 }
 
