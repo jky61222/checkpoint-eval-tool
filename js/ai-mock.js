@@ -13,15 +13,53 @@ class AIService {
         return Math.abs(hash);
     }
 
-    // Helper to extract a mock name from CV text (in reality, an LLM would extract this)
+    // Helper to extract a mock name intelligently from CV text
     static extractMockName(cvText) {
-        // very basic mock extraction based on standard CV structure (first words)
-        const words = cvText.trim().split(/\s+/).slice(0, 2);
-        if (words.length === 2 && words[0].length > 1 && words[1].length > 1) {
-            // Capitalize format
-            return words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+        if (!cvText) return "Alex Mercer";
+
+        // 1. Remove common resume boilerplate from the very beginning
+        let textToSearch = cvText.replace(/^(resume|curriculum vitae|cv|page \d+)\s*/i, "");
+
+        // 2. Scan the first few lines to find a likely name
+        const lines = textToSearch.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+        for (let i = 0; i < Math.min(10, lines.length); i++) {
+            let line = lines[i];
+
+            // Remove emails, URLs, phone numbers, and common labels from the line
+            line = line.replace(/[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}/g, '');
+            line = line.replace(/https?:\/\/[^\s]+/g, '');
+            line = line.replace(/linkedin\.com[^\s]*/gi, '');
+            line = line.replace(/github\.com[^\s]*/gi, '');
+            line = line.replace(/ph:\s*|phone:\s*|tel:\s*|mobile:\s*|email:\s*/gi, '');
+            line = line.replace(/\+?\d[\d\s.-]{7,}\d/g, ''); // phone numbers
+            
+            // Extract alphabetic words that look like names
+            const words = line.split(/[^a-zA-Z\u00C0-\u024F]+/).filter(w => w.length > 1);
+
+            // Ignore lines that contain typical section headers
+            const lowerLine = line.toLowerCase();
+            const badKeywords = ['profile', 'summary', 'experience', 'education', 'skills', 'objective', 'personal', 'projects', 'certifications'];
+            if (badKeywords.some(bk => lowerLine.includes(bk))) continue;
+
+            // If we have 2, 3, or 4 words left on this isolated line, it's highly likely the candidate's name
+            if (words.length >= 2 && words.length <= 4) {
+                return words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+            }
         }
-        return "Alex Mercer"; // Fallback mock name
+
+        // 3. Fallback: If no single clean line found, just take the first 2 alphabetical words from the sanitized text
+        const fallbackWords = textToSearch.replace(/[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}/g, '')
+                                          .replace(/https?:\/\/[^\s]+/g, '')
+                                          .replace(/\+?\d[\d\s.-]{7,}\d/g, '')
+                                          .split(/[^a-zA-Z\u00C0-\u024F]+/)
+                                          .filter(w => w.length > 1 && !['resume', 'cv', 'curriculum', 'vitae', 'page'].includes(w.toLowerCase()));
+
+        if (fallbackWords.length >= 2) {
+             return fallbackWords.slice(0, 2).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+        }
+        
+        return "Alex Mercer"; // Absolute fallback
     }
 
     static extractKeywords(text, count = 5) {
@@ -159,7 +197,7 @@ class AIService {
         const cpMatches = (combinedTextLower.match(/check point|checkpoint|quantum|cloudguard|harmony|infinity|saas|channel/g) || []).length;
 
         // Calculate a logical semantic overlap score instead of pure random generation
-        let rawScore = 40; // baseline
+        let rawScore = 30; // Balanced baseline
         let matchCount = 0;
         
         if (hasJD) {
@@ -171,12 +209,12 @@ class AIService {
                 const jdWords = jdKey.split(' ');
                 cvKeyStrings.forEach(cvKey => {
                     if (cvKey.includes(jdKey) || jdKey.includes(cvKey)) {
-                        matchCount += 1.5; // Strong phrase overlap
+                        matchCount += 1.2; // Strong phrase overlap (balanced)
                     } else {
                         // Check if at least one meaningful word overlaps
                         jdWords.forEach(w => {
                             if (w.length > 3 && cvKey.includes(w)) {
-                                matchCount += 0.5; // Partial word overlap
+                                matchCount += 0.4; // Partial word overlap (balanced)
                             }
                         });
                     }
@@ -184,24 +222,25 @@ class AIService {
             });
             
             // Boost score based on overlaps and Check Point familiarity
-            rawScore += (matchCount * 8);
-            rawScore += (cpMatches * 5);
+            rawScore += (matchCount * 7); // balanced multiplier
+            rawScore += (cpMatches * 5); // balanced multiplier
         } else {
-            rawScore += (cpMatches * 10);
+            rawScore += (cpMatches * 9); // balanced multiplier
         }
 
         // Add minimal entropy for slight variance using the seeded RNG
-        let score = Math.min(Math.max(Math.floor(rawScore + (rng.next() * 15)), 25), 98);
-        if (!hasJD) score -= 15; // Penalize lack of contextual JD for mock purposes
+        let score = Math.min(Math.max(Math.floor(rawScore + (rng.next() * 12)), 20), 96);
+        if (!hasJD) score -= 20; // Balanced penalty for lack of contextual JD
 
         let verdict = "Solid Match";
         if (score >= 75) verdict = "Strong Hire";
-        else if (score < 50) verdict = "Do Not Advance";
+        else if (score < 55) verdict = "Do Not Advance";
         else verdict = "Preliminary Screening";
 
         let summary, pros, cons, detailedEval, conclusion;
         let industryFitScore, industryFitRationale;
         let jdMatchScore, jdMatchRationale;
+        const firstName = candidateName.split(' ')[0];
 
         if (hasJD) {
             // Detect Role Context via weighted scoring to prevent false positives (e.g., HR "Partner")
@@ -224,14 +263,14 @@ class AIService {
             summary = [
                 `Executive Overview: Comprehensive semantic analysis indicates ${candidateName} satisfies approximately ${score}% of the ${isCorpRole ? 'core operational and strategic' : 'primary technical and architectural'} requirements defined in the requisition.`,
                 rng.pick([
-                    `By correlating their documented history with ${cvKeys[0]} against the primary mandate for ${jdKeys[0]}, the model identifies a ${score >= 70 ? 'high-confidence' : 'low-confidence'} structural fit.`,
-                    `The candidate's historical velocity in ${cvKeys[0]} was synthesized against the immediate demands of ${jdKeys[0]}, revealing they ${score >= 70 ? 'demonstrate the necessary leverage' : 'lack the demonstrated leverage'} to execute at the required standard.`,
-                    `An algorithmic review of their tenure in ${cvKeys[0]} establishes a competency baseline that ${score >= 70 ? 'strongly intersects' : 'marginally overlaps'} with your stated requirement for ${jdKeys[0]}.`
+                    `By explicitly correlating ${firstName}'s documented history with ${cvKeys[0]} against the primary mandate for ${jdKeys[0]}, the model identifies a ${score >= 75 ? 'high-confidence' : 'low-confidence'} structural fit.`,
+                    `Synthesizing ${candidateName}'s historical velocity in ${cvKeys[0]} against the immediate demands of ${jdKeys[0]} reveals ${firstName} ${score >= 75 ? 'demonstrates the necessary leverage' : 'lacks the demonstrated leverage'} to execute at the required standard.`,
+                    `An algorithmic review of ${firstName}'s tenure in ${cvKeys[0]} establishes a competency baseline that ${score >= 75 ? 'strongly intersects' : 'marginally overlaps'} with your stated requirement for ${jdKeys[0]}.`
                 ]),
                 rng.pick([
-                    `Furthermore, predictive modeling suggests an ability to pivot their knowledge of ${cvKeys[1]} to meet the daily demands of your ${jdKeys[1]} ${isCorpRole ? 'business unit' : 'infrastructure'}.`,
-                    `Leveraging their past exposure to ${cvKeys[1]}, we project a rapid assimilation curve into a ${jdKeys[1]} environment.`,
-                    `The transition from their prior ${cvKeys[1]} deployments to your ${jdKeys[1]} ${isCorpRole ? 'frameworks' : 'frameworks'} presents a highly viable integration pathway.`
+                    `Furthermore, predictive modeling suggests ${firstName} possesses the ability to pivot their knowledge of ${cvKeys[1]} to meet the daily demands of your ${jdKeys[1]} ${isCorpRole ? 'business unit' : 'infrastructure'}.`,
+                    `Leveraging their past exposure to ${cvKeys[1]}, we project ${candidateName} will follow a rapid assimilation curve into a ${jdKeys[1]} environment.`,
+                    `The transition from ${firstName}'s prior ${cvKeys[1]} deployments to your ${jdKeys[1]} ${isCorpRole ? 'frameworks' : 'architectures'} presents a highly viable integration pathway.`
                 ])
             ].join(' ');
 
@@ -262,49 +301,49 @@ class AIService {
                 jdMatchRationale = `Check Point Technical Ecosystem Match: Strong architectural alignment bridging their hands-on deployment of ${cvKeys[0]} against your core requirement for ${jdKeys[0]}. Security Posture: Empirical evidence of a prevent-first mindset driven by ${cvKeys[3]}. Identified Deficit: A minor tactical gap regarding advanced edge cases of ${jdKeys[4]} within the Check Point Infinity suite.`;
             }
 
-            if (score < 50) {
+            if (score < 55) {
                 pros = [
-                    `Baseline Professionalism: Algorithmic parsing confirms a documented work history, demonstrating foundational exposure to ${cvKeys[0]}.`,
-                    `Alternative Tangential Perspectives: Their background in ${cvKeys[1]} offers a divergent operational perspective, though it correlates poorly with your immediate mandate for ${jdKeys[0]}.`
+                    `Baseline Professionalism: Algorithmic parsing confirms ${firstName} has a documented work history, demonstrating foundational exposure to ${cvKeys[0]}.`,
+                    `Alternative Tangential Perspectives: ${candidateName}'s background in ${cvKeys[1]} offers a divergent operational perspective, though it correlates poorly with your immediate mandate for ${jdKeys[0]}.`
                 ];
                 cons = [
-                    `Critical Capability Deficit: The model identifies an unacceptable delta between their primary experience in ${cvKeys[0]} and the mandatory requirement for ${jdKeys[0]}.`,
-                    `Methodological Misalignment: The requisition demands high-level fluency in ${jdKeys[1] || 'specific scaling workflows'}, whereas the candidate's parsed history lacks verifiable success metrics in this specific discipline.`,
-                    `Operational Scope Asymmetry: Their recent engagements utilizing ${cvKeys[2]} do not establish the necessary scale, complexity, or operational tempo required for this Check Point requisition.`,
-                    `Domain Specificity Mismatch: Highly specialized, enterprise-tier application of ${jdKeys[2] || 'core tooling'}—a core pillar of the JD—is statistically absent from the evaluated documentation.`
+                    `Critical Capability Deficit: The model identifies an unacceptable delta between ${firstName}'s primary experience in ${cvKeys[0]} and the mandatory requirement for ${jdKeys[0]}.`,
+                    `Methodological Misalignment: The requisition demands high-level fluency in ${jdKeys[1] || 'specific scaling workflows'}, whereas ${candidateName}'s parsed history lacks verifiable success metrics in this specific discipline.`,
+                    `Operational Scope Asymmetry: ${firstName}'s recent engagements utilizing ${cvKeys[2]} do not establish the necessary scale, complexity, or operational tempo required for this Check Point requisition.`,
+                    `Domain Specificity Mismatch: Highly specialized, enterprise-tier application of ${jdKeys[2] || 'core tooling'}—a core pillar of the JD—is statistically absent from ${candidateName}'s evaluated documentation.`
                 ];
             } else {
                 pros = [
                     rng.pick([
-                        `High-Fidelity Requirement Matrixing: Semantic analysis reveals the candidate's background in ${cvKeys[0] || 'core operations'} strongly correlates with the primary JD requirement for ${jdKeys[0] || 'core function'}, indicating low onboarding friction.`,
-                        `Strategic Competency Alignment: Their demonstrated proficiency in ${cvKeys[0]} directly addresses the critical path ${jdKeys[0]} mandate outlined in the requisition.`
+                        `High-Fidelity Requirement Matrixing: Semantic analysis reveals ${firstName}'s background in ${cvKeys[0] || 'core operations'} strongly correlates with the primary JD requirement for ${jdKeys[0] || 'core function'}, indicating low onboarding friction.`,
+                        `Strategic Competency Alignment: ${candidateName}'s demonstrated proficiency in ${cvKeys[0]} directly addresses the critical path ${jdKeys[0]} mandate outlined in the requisition.`
                     ]),
                     rng.pick([
-                        `Complementary Technical Synergy: Discovered strong documented evidence of execution within the ${cvKeys[1]} landscape, serving as a powerful force multiplier for your requirement for ${jdKeys[1]}.`,
-                        `Strategic Trajectory Overlap: The parser identified a clear history of navigating initiatives spanning ${cvKeys[1]}, intersecting perfectly with the JD's stated focus on ${jdKeys[1]}.`
+                        `Complementary Technical Synergy: Discovered strong documented evidence of ${firstName}'s execution within the ${cvKeys[1]} landscape, serving as a powerful force multiplier for your requirement for ${jdKeys[1]}.`,
+                        `Strategic Trajectory Overlap: The parser identified ${candidateName} has a clear history of navigating initiatives spanning ${cvKeys[1]}, intersecting perfectly with the JD's stated focus on ${jdKeys[1]}.`
                     ]),
                     rng.pick([
-                        `Proven Enterprise Impact: Demonstrates a history of delivering multi-phase projects utilizing ${cvKeys[2]} to drive quantifiable outcomes, satisfying the core need for ${jdKeys[2] || 'operational excellence'}.`,
-                        `Metric-Driven Execution: Consistently leverages ${cvKeys[2]} to optimize results, mapping efficiently to the KPI expectations for ${jdKeys[2] || 'the target role'}.`
+                        `Proven Enterprise Impact: ${firstName} demonstrates a history of delivering multi-phase projects utilizing ${cvKeys[2]} to drive quantifiable outcomes, satisfying the core need for ${jdKeys[2] || 'operational excellence'}.`,
+                        `Metric-Driven Execution: ${candidateName} consistently leverages ${cvKeys[2]} to optimize results, mapping efficiently to the KPI expectations for ${jdKeys[2] || 'the target role'}.`
                     ]),
                     rng.pick([
-                        `Contextual Adaptability Factor: Career progression modeling shows high competency in bridging ${cvKeys[3]} into modern enterprise architectures relevant to ${jdKeys[3] || 'infrastructure'}.`,
-                        `Cross-Functional Utility: Parsed experience with ${cvKeys[3]} algorithmic predicts a high probability of stretching into the ${jdKeys[3] || 'secondary'} requirements listed by the hiring manager.`
+                        `Contextual Adaptability Factor: Career progression modeling shows ${firstName} possesses high competency in bridging ${cvKeys[3]} into modern enterprise architectures relevant to ${jdKeys[3] || 'infrastructure'}.`,
+                        `Cross-Functional Utility: Parsed experience with ${cvKeys[3]} algorithmic predicts a high probability of ${candidateName} stretching into the ${jdKeys[3] || 'secondary'} requirements listed by the hiring manager.`
                     ])
                 ];
 
                 cons = [
                     rng.pick([
-                        `Architectural Knowledge Deficit: The JD explicitly weights ${jdKeys[3] || 'specific infrastructure'} and ${jdKeys[4] || 'advanced tools'}, but the candidate's data primarily indexes on ${cvKeys[2] || 'alternative methods'}.`,
-                        `Skill Surface Area Limitation: The text analysis indicates heavy reliance on ${cvKeys[0]}, presenting a potential risk vector regarding the JD's secondary requirement of ${jdKeys[3] || 'specialized systems'}.`
+                        `Architectural Knowledge Deficit: The JD explicitly weights ${jdKeys[3] || 'specific infrastructure'} and ${jdKeys[4] || 'advanced tools'}, but ${firstName}'s data primarily indexes on ${cvKeys[2] || 'alternative methods'}.`,
+                        `Skill Surface Area Limitation: The text analysis indicates ${candidateName} relies heavily on ${cvKeys[0]}, presenting a potential risk vector regarding the JD's secondary requirement of ${jdKeys[3] || 'specialized systems'}.`
                     ]),
                     rng.pick([
-                        `Operational Paradigm Drift: The role requires deep fluency in ${jdKeys[2] || 'specific scaling workflows'}, but the candidate's contextual history is anchored predominantly in ${cvKeys[3] || 'legacy'} models.`,
-                        `Tenure/Scale Asymmetry: Their rapid advancement through recent roles utilizing ${cvKeys[1]} requires human vetting against the highly specific ${jdKeys[2] || 'seniority'} requirements of this enterprise scale.`
+                        `Operational Paradigm Drift: The role requires deep fluency in ${jdKeys[2] || 'specific scaling workflows'}, but ${firstName}'s contextual history is anchored predominantly in ${cvKeys[3] || 'legacy'} models.`,
+                        `Tenure/Scale Asymmetry: ${candidateName}'s rapid advancement through recent roles utilizing ${cvKeys[1]} requires human vetting against the highly specific ${jdKeys[2] || 'seniority'} requirements of this enterprise scale.`
                     ]),
                     rng.pick([
-                        `Niche Domain Specificity: Natural Language Processing (NLP) flags a lack of deep, documented exposure to the exact sub-domain of ${jdKeys[4] || 'infrastructure'} targeted in the immediate roadmap.`,
-                        `Ancillary Experience Gap: While foundationally robust in ${cvKeys[0]}, the highly specific, hands-on enterprise application of ${jdKeys[4] || 'our niche tooling'} is not statistically validated in the text.`
+                        `Niche Domain Specificity: Natural Language Processing (NLP) flags a lack of deep, documented exposure to the exact sub-domain of ${jdKeys[4] || 'infrastructure'} targeted in the immediate roadmap for ${firstName}.`,
+                        `Ancillary Experience Gap: While foundationally robust in ${cvKeys[0]}, the highly specific, hands-on enterprise application of ${jdKeys[4] || 'our niche tooling'} is not statistically validated in ${candidateName}'s text.`
                     ])
                 ];
             }
@@ -318,7 +357,7 @@ Vector analysis mapped the candidate's extracted n-grams against the specific Ch
 
 3. Operational Leverage & Execution Telemetry
 This role demands the capability to navigate complex, high-velocity environments to deliver on ${jdKeys[4] || 'core business objectives'}. The candidate's CV provides deterministic, quantifiable evidence of executing at an equivalent scale through past multi-phase initiatives involving ${cvKeys[4]}, proving they possess the structural leverage to drive targeted business outcomes.`;
-            } else if (score >= 50) {
+            } else if (score >= 55) {
                 detailedEval = `1. Semantic Core Competency Mapping (Confidence Interval: 68.5%)
 The neural parsing engine reveals a foundational linguistic correlation between their history in ${cvKeys[0]} and the JD requirement for ${jdKeys[0]}, but detects a statistical lack of the progressive compounding velocity typically demanded at this tier. The model predicts they can execute baseline operations, but advanced delivery vectors represent a moderate risk profile.
 
@@ -340,27 +379,27 @@ This requisition mandates the ability to navigate complex global enterprise envi
 
             let verdict, actionItems;
             if (score >= 75) {
-                verdict = `High Probability Match (Advance). The AI model calculates hyper-fidelity alignment with the core strictures of this role. Semantic modeling generated a strong positive signal linking their history in ${cvKeys[0]} directly to the demand vector for ${jdKeys[0]}.`;
-                actionItems = `- Deploy a targeted technical validation panel assessing the empirical depth of their hands-on architecture experience with ${jdKeys[1]} to mathematically guarantee immediate operational ROI.
-- Formulate a stress-test scenario targeting their algorithmic methodology for overcoming environmental friction related to ${jdKeys[2] || 'cross-functional collaboration'}.
-- Evaluate structural resilience, cognitive agility, and readiness to adopt Check Point's specific ${isCorpRole ? 'global enterprise' : 'preventative security'} doctrines.`;
-            } else if (score >= 50) {
-                verdict = `Borderline Match (Proceed with Caution). The AI parsing engine identifies baseline operational capacity leveraging their expertise in ${cvKeys[0]}, but flags multiple critical friction points necessitating strict human validation against ${jdKeys[0]}.`;
-                actionItems = `- Mandate a focused technical/functional panel specifically stress-testing their practical, unaided application of ${jdKeys[0]} and ${jdKeys[1]}.
-- Deconstruct the identified structural knowledge gap regarding ${jdKeys[3] || 'specialized tooling'}—calculate precisely what onboarding ramp (in weeks) is required to reach baseline competency.
-- Run behavioral analytics questioning to empirically determine how they historically navigate highly matrixed, high-velocity operational architectures.`;
+                verdict = `High Probability Match (Advance). The AI model calculates hyper-fidelity alignment with the core strictures of this role. Semantic modeling generated a strong positive signal linking ${firstName}'s history in ${cvKeys[0]} directly to the demand vector for ${jdKeys[0]}.`;
+                actionItems = `- Deploy a targeted technical validation panel assessing the empirical depth of ${candidateName}'s hands-on architecture experience with ${jdKeys[1]} to mathematically guarantee immediate operational ROI.
+- Formulate a stress-test scenario targeting ${firstName}'s algorithmic methodology for overcoming environmental friction related to ${jdKeys[2] || 'cross-functional collaboration'}.
+- Evaluate ${candidateName}'s structural resilience, cognitive agility, and readiness to adopt Check Point's specific ${isCorpRole ? 'global enterprise' : 'preventative security'} doctrines.`;
+            } else if (score >= 55) {
+                verdict = `Borderline Match (Proceed with Caution). The AI parsing engine identifies baseline operational capacity leveraging ${candidateName}'s expertise in ${cvKeys[0]}, but flags multiple critical friction points for ${firstName} necessitating strict human validation against ${jdKeys[0]}.`;
+                actionItems = `- Mandate a focused technical/functional panel specifically stress-testing ${firstName}'s practical, unaided application of ${jdKeys[0]} and ${jdKeys[1]}.
+- Deconstruct the identified structural knowledge gap regarding ${jdKeys[3] || 'specialized tooling'}—calculate precisely what onboarding ramp (in weeks) is required for ${candidateName} to reach baseline competency.
+- Run behavioral analytics questioning to empirically determine how ${firstName} historically navigates highly matrixed, high-velocity operational architectures.`;
             } else {
-                verdict = `Reject (Do Not Advance). The AI model calculates massive mathematical divergence from the primary mandate of ${jdKeys[0]}. Their core structural strength in ${cvKeys[0]} produces an unacceptable correlation coefficient against the immediate requisition parameters.`;
-                actionItems = `- A strictly enforced, highly technical functional assessment on ${jdKeys[0]} is universally required before any further human resource expenditure.
-- Calculate the total cost of ownership (TCO) required to functionally re-tool their foundational ${cvKeys[1]} skills for the Check Point infrastructure to determine if a training investment is even mathematically viable (Not Recommended).
+                verdict = `Reject (Do Not Advance). The AI model calculates massive mathematical divergence from the primary mandate of ${jdKeys[0]}. ${firstName}'s core structural strength in ${cvKeys[0]} produces an unacceptable correlation coefficient against the immediate requisition parameters.`;
+                actionItems = `- A strictly enforced, highly technical functional assessment on ${jdKeys[0]} is universally required before any further human resource expenditure on ${candidateName}.
+- Calculate the total cost of ownership (TCO) required to functionally re-tool ${firstName}'s foundational ${cvKeys[1]} skills for the Check Point infrastructure to determine if a training investment is even mathematically viable (Not Recommended).
 - Re-calibrate the upstream sourcing algorithm with the Talent Acquisition team to align candidate persona expectations with current market realities.`;
             }
 
             conclusion = `Final Verdict & Strategic AI Recommendation: ${verdict}
 
 Identified Risk Vectors for Human Evaluation:
-- Neural Language Modeling flagged that the resume data indexes dangerously heavily on ${cvKeys[2] || 'their past primary tasks'}, leaving an unverified statistical blind spot regarding the JD's absolute requirement for ${jdKeys[4] || 'specific secondary platforms'}.
-- Evaluate how their specifically documented scale of operations practically measures against the current, high-velocity ${isCorpRole ? 'corporate matrix demands' : 'technical architectural standards'} of Check Point.
+- Neural Language Modeling flagged that ${candidateName}'s resume data indexes dangerously heavily on ${cvKeys[2] || 'their past primary tasks'}, leaving an unverified statistical blind spot regarding the JD's absolute requirement for ${jdKeys[4] || 'specific secondary platforms'}.
+- Evaluate how ${firstName}'s specifically documented scale of operations practically measures against the current, high-velocity ${isCorpRole ? 'corporate matrix demands' : 'technical architectural standards'} of Check Point.
 
 Hiring Authority Action Directives:
 ${actionItems}`;
@@ -385,9 +424,9 @@ ${actionItems}`;
             summary = [
                 `Executive Overview: Initial linguistic scan of ${candidateName}'s dataset reveals a professional with a stable, upwardly mobile career trajectory algorithmically anchored around ${cvKeys[0]} and ${cvKeys[1]}.`,
                 rng.pick([
-                    `Due to the absence of a target Job Description, this telemetry data was benchmarked against standard Check Point Software Technologies operational baselines.`,
-                    isCorpRole ? `Lacking a specific requisition mandate, the model is grading their stated responsibilities against Check Point's operational baseline and global enterprise standards.` : `Lacking a specific requisition mandate, the model is grading their stated engineering history against Check Point's technological baseline and unified security architecture.`,
-                    `Generating a statistically valid positional fit within Check Point's specific structural organizations requires the precise context of a designated requisition.`
+                    `Due to the absence of a target Job Description, this telemetry data for ${firstName} was benchmarked against standard Check Point Software Technologies operational baselines.`,
+                    isCorpRole ? `Lacking a specific requisition mandate, the model is grading ${candidateName}'s stated records against Check Point's operational baseline and global enterprise standards.` : `Lacking a specific requisition mandate, the model is grading ${candidateName}'s stated engineering history against Check Point's technological baseline and unified security architecture.`,
+                    `Generating a statistically valid positional fit within Check Point's specific structural organizations for ${firstName} requires the precise context of a designated requisition.`
                 ])
             ].join(' ');
 
@@ -407,54 +446,54 @@ ${actionItems}`;
 
             pros = [
                 rng.pick([
-                    `Demonstrated Domain Expertise: Verified track record and progressive responsibility scaling within the ${cvKeys[0]} and ${cvKeys[2]} functional data clusters.`,
-                    `Core Architectural Fundamentals: Exhibits a robust, actionable understanding of foundational mechanics within ${cvKeys[0]}, essential for rapid structural integration.`
+                    `Demonstrated Domain Expertise: Verified track record and progressive responsibility scaling for ${firstName} within the ${cvKeys[0]} and ${cvKeys[2]} functional data clusters.`,
+                    `Core Architectural Fundamentals: ${firstName} exhibits a robust, actionable understanding of foundational mechanics within ${cvKeys[0]}, essential for rapid structural integration.`
                 ]),
                 rng.pick([
-                    `Business Impact Articulation: Mathematically normalizes business impact utilizing ${cvKeys[1]}, frequently leveraging hard metrics to demonstrate intrinsic value—a critical required variable for Check Point roles.`,
-                    `Data-Driven Strategy: Consistently frames historical achievements via measurable outcomes relating to ${cvKeys[1]} and high-level strategic alignment.`
+                    `Business Impact Articulation: ${candidateName} mathematically normalizes business impact utilizing ${cvKeys[1]}, frequently leveraging hard metrics to demonstrate intrinsic value—a critical required variable for Check Point roles.`,
+                    `Data-Driven Strategy: ${firstName} consistently frames historical achievements via measurable outcomes relating to ${cvKeys[1]} and high-level strategic alignment.`
                 ]),
                 rng.pick([
-                    `Operational Versatility: Demonstrates high contextual adaptability based on diverse industry experience bridging ${cvKeys[3]} and ${cvKeys[4]}.`,
-                    `Cross-Disciplinary Exposure: Has successfully navigated varied organizational architectures, showcasing a validated ability to context-switch across ${cvKeys[3]} boundaries.`
+                    `Operational Versatility: ${candidateName} demonstrates high contextual adaptability based on diverse industry experience bridging ${cvKeys[3]} and ${cvKeys[4]}.`,
+                    `Cross-Disciplinary Exposure: ${firstName} has successfully navigated varied organizational architectures, showcasing a validated ability to context-switch across ${cvKeys[3]} boundaries.`
                 ])
             ];
 
             cons = [
                 rng.pick([
-                    `Evaluation Blind Spots: The model is completely unable to assess specific Check Point cultural or functional fit without a companion Job Description outlining definitive core responsibilities.`,
-                    `Contextual Strategy Vacuum: It is statistically impossible to determine if their specific execution flavor of ${cvKeys[0]} matches the current demand profile of the hiring team.`
+                    `Evaluation Blind Spots: The model is completely unable to assess specific Check Point cultural or functional fit for ${firstName} without a companion Job Description outlining definitive core responsibilities.`,
+                    `Contextual Strategy Vacuum: It is statistically impossible to determine if ${candidateName}'s specific execution flavor of ${cvKeys[0]} matches the current demand profile of the hiring team.`
                 ]),
                 rng.pick([
-                    `Metric Ambiguity: While primary functional areas are well-quantified in the text, secondary enablement skills lack objective, measurable verification points.`,
-                    `Imbalanced Data Detail: The resume document heavily details their primary competency but glosses over their exact familiarity regarding Check Point ecosystem intricacies.`
+                    `Metric Ambiguity: While ${firstName}'s primary functional areas are well-quantified in the text, secondary enablement skills lack objective, measurable verification points.`,
+                    `Imbalanced Data Detail: ${candidateName}'s resume document heavily details their primary competency but glosses over their exact familiarity regarding Check Point ecosystem intricacies.`
                 ]),
                 rng.pick([
-                    `Unverified Seniority vs Scale: Unknown whether their historical data regarding ${cvKeys[1]} matches the current operational paradigm and high-scale enterprise demands of Check Point's global infrastructure.`,
-                    `Strategic Limitations: Without algorithmic access to the target role requirements, we cannot definitively mathematically prove their ${cvKeys[1]} skills will scale appropriately.`
+                    `Unverified Seniority vs Scale: Unknown whether ${firstName}'s historical data regarding ${cvKeys[1]} matches the current operational paradigm and high-scale enterprise demands of Check Point's global infrastructure.`,
+                    `Strategic Limitations: Without algorithmic access to the target role requirements, we cannot definitively mathematically prove ${candidateName}'s ${cvKeys[1]} skills will scale appropriately.`
                 ])
             ];
 
             detailedEval = `1. Structural Capability Modeling & Baseline Potential
 ${rng.pick([
-                `Unsupervised neural clustering indicates the candidate has formulated a highly robust foundational architecture over their career timeline, anchored deeply in ${cvKeys[0]} and ${cvKeys[1]}. Their employment telemetry exhibits a mathematically consistent sequence of authority escalation.`,
-                `By tracking their positional metadata longitudinally, the parsing engine calculates a clear vector of increasing organizational leverage focused heavily on ${cvKeys[0]}.`
-            ])} This data confirms past environmental structures consistently relied on their capacity to handle compounding tiers of accountability.
+                `Unsupervised neural clustering indicates ${firstName} has formulated a highly robust foundational architecture over their career timeline, anchored deeply in ${cvKeys[0]} and ${cvKeys[1]}. Their employment telemetry exhibits a mathematically consistent sequence of authority escalation.`,
+                `By tracking positional metadata longitudinally, the parsing engine calculates a clear vector of increasing organizational leverage for ${candidateName}, focused heavily on ${cvKeys[0]}.`
+            ])} This data confirms past environmental structures consistently relied on ${firstName}'s capacity to handle compounding tiers of accountability.
 
 2. Algorithmic Processing Limitations (Missing Target Matrix)
-Without a specific requisition vector to serve as a control variable, evaluating the true strategic density of their expertise in ${cvKeys[2]} specifically as it maps to Check Point's targeted Go-to-Market strategy is statistically impossible. ${rng.pick([
-                `The neural engine cannot determine if their prior "senior" engagements satisfy Check Point's rigorous, high-velocity definition of enterprise-grade execution.`,
-                `What computes as profound expertise in their previous isolated environments might only register as a generalized baseline requirement within Check Point's strict operational frameworks.`
+Without a specific requisition vector to serve as a control variable, evaluating the true strategic density of ${candidateName}'s expertise in ${cvKeys[2]} specifically as it maps to Check Point's targeted Go-to-Market strategy is statistically impossible. ${rng.pick([
+                `The neural engine cannot determine if ${firstName}'s prior "senior" engagements satisfy Check Point's rigorous, high-velocity definition of enterprise-grade execution.`,
+                `What computes as profound expertise in ${firstName}'s previous isolated environments might only register as a generalized baseline requirement within Check Point's strict operational frameworks.`
             ])}
 
 3. Syntactic Communication & Structural Formatting
-The underlying data structure and linguistic syntax chosen for their documentation demonstrate a high-fidelity approach to formal business communication, though the specific keyword density lacks the contextual targeting required for a perfect Check Point cultural match.`;
-            conclusion = `Final Evaluation State: Inconclusive (Control Variable Missing). The internal model calculates strong baseline capability within the ${cvKeys[0]} cluster, but cannot mathematically verify specific alignment without a Job Description to serve as an anchor point.
+The underlying data structure and linguistic syntax chosen for ${candidateName}'s documentation demonstrate a high-fidelity approach to formal business communication, though the specific keyword density lacks the contextual targeting required for a perfect Check Point cultural match.`;
+            conclusion = `Final Evaluation State: Inconclusive (Control Variable Missing). The internal model calculates strong baseline capability within the ${cvKeys[0]} cluster for ${firstName}, but cannot mathematically verify specific alignment without a Job Description to serve as an anchor point.
 
 Hiring Authority Action Directives:
-- Require the Hiring Authority to furnish a formal Job Description specifically outlining expectations regarding ${cvKeys[1]} to enable full algorithmic validation.
-- Initiate a human-led technical screen focusing on the exact depth of their ${cvKeys[2]} exposure to manually verify structural fit against Check Point's immediate requirements.
-- Analyze their unverified capacity to adapt their historical knowledge of ${cvKeys[3]} into Check Point's specific ${isCorpRole ? 'matrixed corporate' : 'global enterprise security'} workflow models.`;
+- Require the Hiring Authority to furnish a formal Job Description specifically outlining expectations regarding ${cvKeys[1]} to enable full algorithmic validation for ${candidateName}.
+- Initiate a human-led technical screen focusing on the exact depth of ${firstName}'s ${cvKeys[2]} exposure to manually verify structural fit against Check Point's immediate requirements.
+- Analyze ${candidateName}'s unverified capacity to adapt their historical knowledge of ${cvKeys[3]} into Check Point's specific ${isCorpRole ? 'matrixed corporate' : 'global enterprise security'} workflow models.`;
         }
 
         // LinkedIn Identity & Employment Verification Check
