@@ -144,6 +144,21 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('jd-match-score').textContent = `${data.jdMatchScore}/100`;
         document.getElementById('jd-match-rationale').textContent = data.jdMatchRationale;
 
+        // Populate Working Rights
+        const wrStatusEl = document.getElementById('working-rights-status');
+        wrStatusEl.textContent = data.workingRightsStatus;
+        document.getElementById('working-rights-rationale').textContent = data.workingRightsRationale;
+        
+        // Color code the working rights status
+        wrStatusEl.style.color = 'var(--text-color)'; // default
+        if (data.workingRightsStatus.includes('Eligible')) {
+            wrStatusEl.style.color = '#10b981'; // green
+        } else if (data.workingRightsStatus.includes('Risk') || data.workingRightsStatus.includes('Flagged')) {
+            wrStatusEl.style.color = '#ef4444'; // red
+        } else if (data.workingRightsStatus.includes('Unknown') || data.workingRightsStatus.includes('Pending')) {
+            wrStatusEl.style.color = '#f59e0b'; // orange/yellow
+        }
+
         // Populate Lists
         const prosList = document.getElementById('pros-list');
         const consList = document.getElementById('cons-list');

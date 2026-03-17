@@ -334,6 +334,10 @@ body.dark-theme {
     }
 }
 
+.candidate-header h2 {
+    font-size: 2.16rem; /* 1.2x bigger than default 1.8rem */
+}
+
 .verdict-banner {
     display: flex;
     align-items: center;
@@ -396,6 +400,10 @@ body.dark-theme {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1.5rem;
+}
+
+.stats-grid {
+    grid-template-columns: repeat(3, 1fr);
 }
 
 .dashboard-card {
@@ -550,9 +558,9 @@ body.dark-theme {
 
     /* Tighten Layout for PDF Space Optimization */
     .dashboard-grid {
-        display: flex !important;
-        flex-direction: column !important;
-        gap: 0 !important;
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 1rem !important;
     }
 
     /* Ensure Cards don't split across pages and remove excess gaps */
@@ -579,5 +587,15 @@ body.dark-theme {
 
     .app-container {
         height: auto;
+    }
+}
+
+@media (max-width: 768px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr;
     }
 }

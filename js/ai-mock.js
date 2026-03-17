@@ -242,6 +242,53 @@ class AIService {
         let jdMatchScore, jdMatchRationale;
         const firstName = candidateName.split(' ')[0];
 
+        // --- WORKING RIGHTS EXTRACTION LOGIC ---
+        const locationKeywords = ['japan', 'tokyo', 'osaka', 'singapore', 'australia', 'sydney', 'uk', 'london', 'united kingdom', 'usa', 'united states', 'new york', 'california', 'israel', 'tel aviv'];
+        const visaKeywords = ['citizen', 'permanent resident', 'pr', 'visa', 'work permit', 'working rights', 'authorized to work'];
+        
+        // Find which locations are mentioned in the CV
+        const cvLocations = locationKeywords.filter(loc => combinedTextLower.includes(loc));
+        const cvHasVisaMentions = visaKeywords.some(v => combinedTextLower.includes(v));
+
+        let workingRightsStatus = "Pending Verification";
+        let workingRightsRationale = `Neither the resume nor the job description contain explicit enough location/visa data to make a definitive algorithmic determination. A human compliance check is required.`;
+
+        if (hasJD) {
+            // Find which locations are mentioned in the JD
+            const jdTextLower = (jdText || '').toLowerCase();
+            const jdLocations = locationKeywords.filter(loc => jdTextLower.includes(loc));
+
+            if (jdLocations.length > 0) {
+                const primaryJdLocation = jdLocations[0];
+                const primaryJdLocationCapitalized = primaryJdLocation.charAt(0).toUpperCase() + primaryJdLocation.slice(1);
+                
+                if (cvLocations.includes(primaryJdLocation)) {
+                    workingRightsStatus = "Likely Eligible";
+                    workingRightsRationale = `The Job Description targets ${primaryJdLocationCapitalized}. The candidate's resume also references ${primaryJdLocationCapitalized}, indicating they are currently located in the target region. ${cvHasVisaMentions ? 'Explicit visa/citizenship keywords were also detected.' : 'Current local address suggests existing working rights, though visa status must still be formally verified.'}`;
+                } else if (cvLocations.length > 0) {
+                    const primaryCvLocation = cvLocations[0].charAt(0).toUpperCase() + cvLocations[0].slice(1);
+                    workingRightsStatus = "Flagged: Relocation Risk";
+                    workingRightsRationale = `The Requisition targets ${primaryJdLocationCapitalized}, but the candidate's documentation primarily references ${primaryCvLocation}. Confirm if the candidate requires visa sponsorship or relocation assistance before proceeding.`;
+                } else {
+                    workingRightsStatus = "Unknown Location";
+                    workingRightsRationale = `Requisition location identified (${primaryJdLocationCapitalized}), but the candidate's resume lacks a physical address or regional marker. Confirm location and working rights during the preliminary screen.`;
+                }
+            } else {
+                 if(cvLocations.length > 0) {
+                    const primaryCvLocation = cvLocations[0].charAt(0).toUpperCase() + cvLocations[0].slice(1);
+                    workingRightsRationale = `The candidate appears to be located in ${primaryCvLocation}. However, the Job Description lacks a specific geographic requirement for cross-referencing.`;
+                 }
+            }
+        } else {
+            // No JD path
+            if (cvLocations.length > 0) {
+                 const primaryCvLocation = cvLocations[0].charAt(0).toUpperCase() + cvLocations[0].slice(1);
+                 workingRightsStatus = "Location Identified";
+                 workingRightsRationale = `Candidate data originates from or references ${primaryCvLocation}. ${cvHasVisaMentions ? 'Work authorization terms were detected.' : 'Cannot perform cross-border assessment without a target Job Description.'}`;
+            }
+        }
+        // --- END WORKING RIGHTS EXTRACTION LOGIC ---
+
         if (hasJD) {
             // Detect Role Context via weighted scoring to prevent false positives (e.g., HR "Partner")
             const salesMatches = (combinedTextLower.match(/sales|quota|territory|revenue|business development|account executive|account manager/g) || []).length;
@@ -522,6 +569,8 @@ Hiring Authority Action Directives:
             industryFitRationale: industryFitRationale,
             jdMatchScore: jdMatchScore,
             jdMatchRationale: jdMatchRationale,
+            workingRightsStatus: workingRightsStatus,
+            workingRightsRationale: workingRightsRationale,
             pros: pros,
             cons: cons,
             detailedEval: detailedEval,
