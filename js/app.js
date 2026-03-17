@@ -160,8 +160,32 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Populate Lists
+        const techSkillsList = document.getElementById('tech-skills-list');
+        const productExpList = document.getElementById('product-exp-list');
+        const certificationsList = document.getElementById('certifications-list');
         const prosList = document.getElementById('pros-list');
         const consList = document.getElementById('cons-list');
+
+        techSkillsList.innerHTML = '';
+        (data.techSkills || []).forEach(skill => {
+            const li = document.createElement('li');
+            li.textContent = skill;
+            techSkillsList.appendChild(li);
+        });
+
+        productExpList.innerHTML = '';
+        (data.productExperience || []).forEach(exp => {
+            const li = document.createElement('li');
+            li.textContent = exp;
+            productExpList.appendChild(li);
+        });
+
+        certificationsList.innerHTML = '';
+        (data.certifications || []).forEach(cert => {
+            const li = document.createElement('li');
+            li.textContent = cert;
+            certificationsList.appendChild(li);
+        });
 
         prosList.innerHTML = '';
         data.pros.forEach(list => {

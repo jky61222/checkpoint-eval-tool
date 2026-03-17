@@ -35,16 +35,32 @@ class AIService {
             line = line.replace(/\+?\d[\d\s.-]{7,}\d/g, ''); // phone numbers
             
             // Extract alphabetic words that look like names
-            const words = line.split(/[^a-zA-Z\u00C0-\u024F]+/).filter(w => w.length > 1);
+            const words = line.split(/[^a-zA-Z\u00C0-\u024F]+/).filter(w => w.length > 0);
 
-            // Ignore lines that contain typical section headers
+            // Ignore lines with numbers (often addresses, dates, or phone numbers)
+            if (/[0-9]/.test(line)) continue;
+
+            // Ignore lines that contain typical section headers, job titles, or project names
             const lowerLine = line.toLowerCase();
-            const badKeywords = ['profile', 'summary', 'experience', 'education', 'skills', 'objective', 'personal', 'projects', 'certifications'];
+            const badKeywords = [
+                'profile', 'summary', 'experience', 'education', 'skills', 'objective', 
+                'personal', 'projects', 'certifications', 'details', 'web', 'application',
+                'contact', 'information', 'about', 'history', 'employment',
+                'technologies', 'languages', 'hobbies', 'interests', 'references',
+                'developer', 'engineer', 'manager', 'director', 'specialist', 
+                'consultant', 'analyst', 'administrator', 'executive', 'assistant',
+                'senior', 'junior', 'lead', 'head', 'chief', 'principal', 'curriculum', 'vitae', 'resume'
+            ];
+            
+            // Check if line includes any of the bad words
             if (badKeywords.some(bk => lowerLine.includes(bk))) continue;
 
+            // Filter out extremely short words that aren't typical name parts
+            const validWords = words.filter(w => w.length > 1);
+
             // If we have 2, 3, or 4 words left on this isolated line, it's highly likely the candidate's name
-            if (words.length >= 2 && words.length <= 4) {
-                return words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+            if (validWords.length >= 2 && validWords.length <= 4 && words.length <= 5) {
+                return validWords.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
             }
         }
 
@@ -560,6 +576,32 @@ Hiring Authority Action Directives:
             linkedInDetails = `The parser did not detect a valid LinkedIn profile URL (https://www.linkedin.com/in/...) within the candidate's document. Unable to perform automated public record cross-referencing for employment history verification.`;
         }
 
+        // --- AGGREGATION EXTRACTION LOGIC ---
+        const techKeywords = ['python', 'java', 'javascript', 'react', 'node.js', 'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'sql', 'nosql', 'linux', 'windows server', 'c++', 'c#', 'ruby', 'go', 'terraform', 'ansible'];
+        const productKeywords = ['salesforce', 'servicenow', 'check point', 'palo alto', 'cisco', 'microsoft 365', 'jira', 'confluence', 'sap', 'oracle', 'hubspot', 'workday', 'splunk', 'crowdstrike', 'zscaler', 'okta'];
+        const certKeywords = ['cissp', 'aws certified', 'pmp', 'scrum master', 'ccie', 'cism', 'ceh', 'comptia', 'azure fundamentals', 'gcp professional', 'itil', 'togaf', 'ccna', 'ccnp'];
+
+        const extractList = (dictionary, maxWords) => {
+            const found = dictionary.filter(keyword => combinedTextLower.includes(keyword));
+            // Capitalize properly
+            return found.map(word => {
+                if(word === 'aws') return 'AWS';
+                if(word === 'gcp') return 'GCP';
+                if(word.includes('certified')) return word.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                if(word === 'pmp' || word === 'cissp' || word === 'cism' || word === 'ceh' || word === 'ccna' || word === 'ccnp' || word === 'ccie' || word === 'itil') return word.toUpperCase();
+                return word.charAt(0).toUpperCase() + word.slice(1);
+            }).slice(0, maxWords);
+        };
+
+        let techSkills = extractList(techKeywords, 5);
+        if (techSkills.length === 0) techSkills = ["Not explicitly identified in documentation"];
+
+        let productExperience = extractList(productKeywords, 5);
+        if (productExperience.length === 0) productExperience = ["Not explicitly identified in documentation"];
+
+        let certifications = extractList(certKeywords, 4);
+        if (certifications.length === 0) certifications = ["Not explicitly identified in documentation"];
+
         return {
             candidateName: candidateName,
             score: score,
@@ -571,6 +613,9 @@ Hiring Authority Action Directives:
             jdMatchRationale: jdMatchRationale,
             workingRightsStatus: workingRightsStatus,
             workingRightsRationale: workingRightsRationale,
+            techSkills: techSkills,
+            productExperience: productExperience,
+            certifications: certifications,
             pros: pros,
             cons: cons,
             detailedEval: detailedEval,
