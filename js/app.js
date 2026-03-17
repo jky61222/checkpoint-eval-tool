@@ -92,6 +92,13 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             // Parse documents (frontend parsing)
             const cvText = await DocumentParser.parseFile(cvFile);
+            
+            console.log("====================================");
+            console.log("      RAW EXTRACTED CV TEXT         ");
+            console.log("====================================");
+            console.log(cvText);
+            console.log("====================================");
+
             const jdText = jdFile ? await DocumentParser.parseFile(jdFile) : "";
 
             // Execute AI Mock call (defaulting to English logically)
