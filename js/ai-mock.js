@@ -212,6 +212,54 @@ class AIService {
         const combinedTextLower = combinedText.toLowerCase();
         const cpMatches = (combinedTextLower.match(/check point|checkpoint|quantum|cloudguard|harmony|infinity|saas|channel/g) || []).length;
 
+        // --- AGGREGATION EXTRACTION LOGIC ---
+        const techKeywords = ['python', 'java', 'javascript', 'react', 'node.js', 'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'sql', 'nosql', 'linux', 'windows server', 'c++', 'c#', 'ruby', 'go', 'terraform', 'ansible'];
+        const productKeywords = ['salesforce', 'servicenow', 'check point', 'palo alto', 'cisco', 'microsoft 365', 'jira', 'confluence', 'sap', 'oracle', 'hubspot', 'workday', 'splunk', 'crowdstrike', 'zscaler', 'okta'];
+        const certKeywords = ['cissp', 'aws certified', 'pmp', 'scrum master', 'ccie', 'cism', 'ceh', 'comptia', 'azure fundamentals', 'gcp professional', 'itil', 'togaf', 'ccna', 'ccnp'];
+
+        const cvTextLower = (cvText || "").toLowerCase();
+        const jdTextLower = (jdText || "").toLowerCase();
+
+        const extractList = (dictionary, maxWords) => {
+            const found = dictionary.filter(keyword => {
+                // Escape special characters in the keyword (e.g., node.js, c++)
+                const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                // Use word boundaries \b to ensure we only match whole words
+                // \b doesn't work well right after '+' or '#', so we need a slightly more robust regex or just rely on \b for normal words
+                let regexPattern = `\\b${escapedKeyword}\\b`;
+
+                // Handle special cases like C++, C#, Node.js where \b might fail due to non-word characters
+                if (keyword === 'c++' || keyword === 'c#') {
+                    regexPattern = `\\b${escapedKeyword}(?!\\w)`; 
+                } else if (keyword === 'node.js') {
+                    regexPattern = `\\bnode\\.js\\b`;
+                }
+
+                const regex = new RegExp(regexPattern, 'i'); // 'i' flag for case-insensitive
+
+                // Must be in the candidate's CV
+                const inCV = regex.test(cvTextLower);
+                if (!inCV) return false;
+                
+                // If there's a Job Description, it must also be related to the JD
+                if (hasJD) return regex.test(jdTextLower);
+                
+                return true;
+            });
+
+            return found.map(word => {
+                if(word === 'aws') return 'AWS';
+                if(word === 'gcp') return 'GCP';
+                if(word.includes('certified')) return word.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                if(['pmp', 'cissp', 'cism', 'ceh', 'ccna', 'ccnp', 'ccie', 'itil'].includes(word)) return word.toUpperCase();
+                return word.charAt(0).toUpperCase() + word.slice(1);
+            }).slice(0, maxWords);
+        };
+
+        const techSkills = extractList(techKeywords, 5);
+        const productExperience = extractList(productKeywords, 5);
+        const certifications = extractList(certKeywords, 4);
+
         // Calculate a logical semantic overlap score instead of pure random generation
         let rawScore = 30; // Balanced baseline
         let matchCount = 0;
@@ -369,12 +417,17 @@ class AIService {
                     `Baseline Professionalism: Algorithmic parsing confirms ${firstName} has a documented work history, demonstrating foundational exposure to ${cvKeys[0]}.`,
                     `Alternative Tangential Perspectives: ${candidateName}'s background in ${cvKeys[1]} offers a divergent operational perspective, though it correlates poorly with your immediate mandate for ${jdKeys[0]}.`
                 ];
+                if (techSkills.length > 0) pros.push(`Technical Baseline: Possesses confirmed familiarity with technical skills including ${techSkills.join(', ')}.`);
+                if (certifications.length > 0) pros.push(`Verified Credentials: Holds formal certifications (${certifications.join(', ')}) relevant to the industry.`);
+
                 cons = [
                     `Critical Capability Deficit: The model identifies an unacceptable delta between ${firstName}'s primary experience in ${cvKeys[0]} and the mandatory requirement for ${jdKeys[0]}.`,
                     `Methodological Misalignment: The requisition demands high-level fluency in ${jdKeys[1] || 'specific scaling workflows'}, whereas ${candidateName}'s parsed history lacks verifiable success metrics in this specific discipline.`,
                     `Operational Scope Asymmetry: ${firstName}'s recent engagements utilizing ${cvKeys[2]} do not establish the necessary scale, complexity, or operational tempo required for this Check Point requisition.`,
                     `Domain Specificity Mismatch: Highly specialized, enterprise-tier application of ${jdKeys[2] || 'core tooling'}—a core pillar of the JD—is statistically absent from ${candidateName}'s evaluated documentation.`
                 ];
+                if (productExperience.length === 0) cons.push(`Ecosystem Gap: The analysis could not explicitly identify deep experience with major targeted enterprise products in the parsed documentation.`);
+                if (techSkills.length === 0) cons.push(`Technical Depth Risk: Core technical skill stacks mapped across the corpus were anomalously low or missing entirely.`);
             } else {
                 pros = [
                     rng.pick([
@@ -409,6 +462,10 @@ class AIService {
                         `Ancillary Experience Gap: While foundationally robust in ${cvKeys[0]}, the highly specific, hands-on enterprise application of ${jdKeys[4] || 'our niche tooling'} is not statistically validated in ${candidateName}'s text.`
                     ])
                 ];
+                if (techSkills.length > 0) pros.push(`Strong validation of engineering/technical baselines, actively citing skills in ${techSkills.join(', ')}.`);
+                if (productExperience.length > 0) pros.push(`Directly demonstrates integration and orchestration experience involving major platform ecosystems like ${productExperience.join(', ')}.`);
+                if (certifications.length > 0) pros.push(`Verified Credentials: The candidate holds globally recognized industry certifications (${certifications.join(', ')}), proving baseline competency and commitment to the sector.`);
+                if (techSkills.length === 0 && productExperience.length === 0) cons.push(`Technical Evidence Deficit: Despite functional matches, the parser struggled to extract explicit named technical stacks or enterprise platform experience from the raw resume data.`);
             }
 
             if (score >= 75) {
@@ -419,7 +476,8 @@ The neural parsing engine confirms hyper-alignment between the candidate's struc
 Vector analysis mapped the candidate's extracted n-grams against the specific Check Point ${isCorpRole ? 'corporate operations' : 'cybersecurity'} matrix. Statistically significant overlaps exist bridging their demonstrable experience in ${cvKeys[2]} directly to your defined need for ${jdKeys[2]}. The predictive model indicates high contextual adaptability and phenomenal onboarding efficiency.
 
 3. Operational Leverage & Execution Telemetry
-This role demands the capability to navigate complex, high-velocity environments to deliver on ${jdKeys[4] || 'core business objectives'}. The candidate's CV provides deterministic, quantifiable evidence of executing at an equivalent scale through past multi-phase initiatives involving ${cvKeys[4]}, proving they possess the structural leverage to drive targeted business outcomes.`;
+This role demands the capability to navigate complex, high-velocity environments to deliver on ${jdKeys[4] || 'core business objectives'}. The candidate's CV provides deterministic, quantifiable evidence of executing at an equivalent scale through past multi-phase initiatives involving ${cvKeys[4]}, proving they possess the structural leverage to drive targeted business outcomes.
+${techSkills.length > 0 ? `\n4. Technology & Ecosystem Aggregation\nThe extracted technical fingerprint is robust. The parser distinctly identified foundational competency in ${techSkills.join(', ')}. Concurrently, analysis of their product exposure yielded hits spanning ${productExperience.length > 0 ? productExperience.join(', ') : 'multiple peripheral tools'}, complemented by formally verified credentials in the form of ${certifications.length > 0 ? certifications.join(', ') : 'standard degrees'}.` : ''}`;
             } else if (score >= 55) {
                 detailedEval = `1. Semantic Core Competency Mapping (Confidence Interval: 68.5%)
 The neural parsing engine reveals a foundational linguistic correlation between their history in ${cvKeys[0]} and the JD requirement for ${jdKeys[0]}, but detects a statistical lack of the progressive compounding velocity typically demanded at this tier. The model predicts they can execute baseline operations, but advanced delivery vectors represent a moderate risk profile.
@@ -576,32 +634,6 @@ Hiring Authority Action Directives:
             linkedInDetails = `The parser did not detect a valid LinkedIn profile URL (https://www.linkedin.com/in/...) within the candidate's document. Unable to perform automated public record cross-referencing for employment history verification.`;
         }
 
-        // --- AGGREGATION EXTRACTION LOGIC ---
-        const techKeywords = ['python', 'java', 'javascript', 'react', 'node.js', 'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'sql', 'nosql', 'linux', 'windows server', 'c++', 'c#', 'ruby', 'go', 'terraform', 'ansible'];
-        const productKeywords = ['salesforce', 'servicenow', 'check point', 'palo alto', 'cisco', 'microsoft 365', 'jira', 'confluence', 'sap', 'oracle', 'hubspot', 'workday', 'splunk', 'crowdstrike', 'zscaler', 'okta'];
-        const certKeywords = ['cissp', 'aws certified', 'pmp', 'scrum master', 'ccie', 'cism', 'ceh', 'comptia', 'azure fundamentals', 'gcp professional', 'itil', 'togaf', 'ccna', 'ccnp'];
-
-        const extractList = (dictionary, maxWords) => {
-            const found = dictionary.filter(keyword => combinedTextLower.includes(keyword));
-            // Capitalize properly
-            return found.map(word => {
-                if(word === 'aws') return 'AWS';
-                if(word === 'gcp') return 'GCP';
-                if(word.includes('certified')) return word.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-                if(word === 'pmp' || word === 'cissp' || word === 'cism' || word === 'ceh' || word === 'ccna' || word === 'ccnp' || word === 'ccie' || word === 'itil') return word.toUpperCase();
-                return word.charAt(0).toUpperCase() + word.slice(1);
-            }).slice(0, maxWords);
-        };
-
-        let techSkills = extractList(techKeywords, 5);
-        if (techSkills.length === 0) techSkills = ["Not explicitly identified in documentation"];
-
-        let productExperience = extractList(productKeywords, 5);
-        if (productExperience.length === 0) productExperience = ["Not explicitly identified in documentation"];
-
-        let certifications = extractList(certKeywords, 4);
-        if (certifications.length === 0) certifications = ["Not explicitly identified in documentation"];
-
         return {
             candidateName: candidateName,
             score: score,
@@ -613,9 +645,6 @@ Hiring Authority Action Directives:
             jdMatchRationale: jdMatchRationale,
             workingRightsStatus: workingRightsStatus,
             workingRightsRationale: workingRightsRationale,
-            techSkills: techSkills,
-            productExperience: productExperience,
-            certifications: certifications,
             pros: pros,
             cons: cons,
             detailedEval: detailedEval,
