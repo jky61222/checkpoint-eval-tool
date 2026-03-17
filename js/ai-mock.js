@@ -17,6 +17,16 @@ class AIService {
     static extractMockName(cvText) {
         if (!cvText) return "Alex Mercer";
 
+        const badKeywords = [
+            'profile', 'summary', 'experience', 'education', 'skills', 'objective', 
+            'personal', 'projects', 'certifications', 'details', 'web', 'application',
+            'contact', 'information', 'about', 'history', 'employment', 'name', 'phone', 'email',
+            'technologies', 'languages', 'hobbies', 'interests', 'references',
+            'developer', 'engineer', 'manager', 'director', 'specialist', 
+            'consultant', 'analyst', 'administrator', 'executive', 'assistant',
+            'senior', 'junior', 'lead', 'head', 'chief', 'principal', 'curriculum', 'vitae', 'resume', 'page'
+        ];
+
         // 1. Remove common resume boilerplate from the very beginning
         let textToSearch = cvText.replace(/^(resume|curriculum vitae|cv|page \d+)\s*/i, "");
 
@@ -42,15 +52,6 @@ class AIService {
 
             // Ignore lines that contain typical section headers, job titles, or project names
             const lowerLine = line.toLowerCase();
-            const badKeywords = [
-                'profile', 'summary', 'experience', 'education', 'skills', 'objective', 
-                'personal', 'projects', 'certifications', 'details', 'web', 'application',
-                'contact', 'information', 'about', 'history', 'employment',
-                'technologies', 'languages', 'hobbies', 'interests', 'references',
-                'developer', 'engineer', 'manager', 'director', 'specialist', 
-                'consultant', 'analyst', 'administrator', 'executive', 'assistant',
-                'senior', 'junior', 'lead', 'head', 'chief', 'principal', 'curriculum', 'vitae', 'resume'
-            ];
             
             // Check if line includes any of the bad words
             if (badKeywords.some(bk => lowerLine.includes(bk))) continue;
@@ -69,13 +70,28 @@ class AIService {
                                           .replace(/https?:\/\/[^\s]+/g, '')
                                           .replace(/\+?\d[\d\s.-]{7,}\d/g, '')
                                           .split(/[^a-zA-Z\u00C0-\u024F]+/)
-                                          .filter(w => w.length > 1 && !['resume', 'cv', 'curriculum', 'vitae', 'page'].includes(w.toLowerCase()));
+                                          .filter(w => w.length > 1 && !badKeywords.includes(w.toLowerCase()));
 
         if (fallbackWords.length >= 2) {
              return fallbackWords.slice(0, 2).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
         }
         
-        return "Alex Mercer"; // Absolute fallback
+        // 4. Absolute Final Fallback: Scan the top 30% of the raw text for two consecutive capitalized words
+        const topText = cvText.substring(0, Math.floor(cvText.length * 0.3));
+        const regex = /([A-Z][a-z]+)\s+([A-Z][a-z]+)/g;
+        let match;
+        
+        while ((match = regex.exec(topText)) !== null) {
+            const word1 = match[1].toLowerCase();
+            const word2 = match[2].toLowerCase();
+            
+            // Ensure neither matched word is in the bad keyword list
+            if (!badKeywords.includes(word1) && !badKeywords.includes(word2)) {
+                return `${match[1]} ${match[2]}`;
+            }
+        }
+        
+        return "Unknown Candidate"; // True absolute fallback if absolutely nothing matches
     }
 
     static extractKeywords(text, count = 5) {
