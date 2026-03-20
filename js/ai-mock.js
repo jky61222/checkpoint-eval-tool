@@ -199,32 +199,37 @@ class AIService {
         return uniqueConcepts;
     }
 
-    static async analyze(cvText, jdText) {
-        // Simulate network delay (2-3 seconds)
-        await new Promise(resolve => setTimeout(resolve, 2500));
+    static cosineSimilarity(a, b) {
+        let dotProduct = 0, normA = 0, normB = 0;
+        for (let i = 0; i < a.length; i++) {
+            dotProduct += a[i] * b[i];
+            normA += a[i] * a[i];
+            normB += b[i] * b[i];
+        }
+        if (normA === 0 || normB === 0) return 0;
+        return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+    }
 
-        // Generate tailored mock response
+    static async analyze(cvText, jdText, onStatusChange = null) {
+        if (onStatusChange) onStatusChange("Initializing Neural Net...");
+        
+        let extractor = this.extractor;
+        if (!extractor) {
+            if (onStatusChange) onStatusChange("Downloading Embedding Model (~22MB)...");
+            const transformers = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers');
+            transformers.env.allowLocalModels = false;
+            transformers.env.useBrowserCache = true;
+            extractor = await transformers.pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+            this.extractor = extractor;
+        }
+
         const hasJD = jdText && jdText.length > 50;
         const candidateName = this.extractMockName(cvText);
 
-        // Extract real contextual keywords from the parsed text!
         const cvKeys = this.extractKeywords(cvText, 5);
         const jdKeys = hasJD ? this.extractKeywords(jdText, 5) : [];
 
-        // Build a DETERMINISTIC pseudo-random generator seeded by the hashed document text
         const combinedText = (cvText || "") + (jdText || "");
-        let currentSeed = this.hashString(combinedText);
-
-        const rng = {
-            next: function () {
-                currentSeed = (currentSeed * 9301 + 49297) % 233280;
-                return currentSeed / 233280;
-            },
-            pick: function (arr) {
-                return arr[Math.floor(this.next() * arr.length)];
-            }
-        };
-
         const combinedTextLower = combinedText.toLowerCase();
         const cpMatches = (combinedTextLower.match(/check point|checkpoint|quantum|cloudguard|harmony|infinity|saas|channel/g) || []).length;
 
@@ -238,28 +243,19 @@ class AIService {
 
         const extractList = (dictionary, maxWords) => {
             const found = dictionary.filter(keyword => {
-                // Escape special characters in the keyword (e.g., node.js, c++)
                 const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                // Use word boundaries \b to ensure we only match whole words
-                // \b doesn't work well right after '+' or '#', so we need a slightly more robust regex or just rely on \b for normal words
                 let regexPattern = `\\b${escapedKeyword}\\b`;
 
-                // Handle special cases like C++, C#, Node.js where \b might fail due to non-word characters
                 if (keyword === 'c++' || keyword === 'c#') {
                     regexPattern = `\\b${escapedKeyword}(?!\\w)`; 
                 } else if (keyword === 'node.js') {
                     regexPattern = `\\bnode\\.js\\b`;
                 }
 
-                const regex = new RegExp(regexPattern, 'i'); // 'i' flag for case-insensitive
-
-                // Must be in the candidate's CV
+                const regex = new RegExp(regexPattern, 'i');
                 const inCV = regex.test(cvTextLower);
                 if (!inCV) return false;
-                
-                // If there's a Job Description, it must also be related to the JD
                 if (hasJD) return regex.test(jdTextLower);
-                
                 return true;
             });
 
@@ -276,41 +272,44 @@ class AIService {
         const productExperience = extractList(productKeywords, 5);
         const certifications = extractList(certKeywords, 4);
 
-        // Calculate a logical semantic overlap score instead of pure random generation
-        let rawScore = 30; // Balanced baseline
-        let matchCount = 0;
-        
+        if (onStatusChange) onStatusChange("Computing Semantic Embeddings...");
+
+        // 1. Calculate CV Embedding (limit to first ~2000 chars for speed and memory)
+        const cvDocStr = cvText.substring(0, 2000) + " " + cvKeys.join(" ");
+        const cvEmbeddingTensor = await extractor(cvDocStr, { pooling: 'mean', normalize: true, truncation: true, maxLength: 512 });
+        const cvEmbedding = cvEmbeddingTensor.data;
+
+        // 2. Industry Fit Score via AI Math
+        const industryVocab = "cybersecurity infosec network security enterprise software b2b tech sales engineering compliance architecture infrastructure cloud native full stack";
+        const indEmbeddingTensor = await extractor(industryVocab, { pooling: 'mean', normalize: true, truncation: true });
+        let industryFitScoreVal = 40;
+        const indSim = this.cosineSimilarity(cvEmbedding, indEmbeddingTensor.data);
+         // Map similarity from [0.1, 0.6] -> [0, 100] approximately
+        industryFitScoreVal = Math.min(100, Math.max(0, Math.round((indSim - 0.1) * 200)));
+
+        // 3. JD Match Score via AI Math
+        let jdMatchScoreVal = 40;
         if (hasJD) {
-            const cvKeyStrings = cvKeys.map(k => k.toLowerCase());
-            const jdKeyStrings = jdKeys.map(k => k.toLowerCase());
-            
-            // Check direct or partial overlaps between CV and JD concepts
-            jdKeyStrings.forEach(jdKey => {
-                const jdWords = jdKey.split(' ');
-                cvKeyStrings.forEach(cvKey => {
-                    if (cvKey.includes(jdKey) || jdKey.includes(cvKey)) {
-                        matchCount += 1.2; // Strong phrase overlap (balanced)
-                    } else {
-                        // Check if at least one meaningful word overlaps
-                        jdWords.forEach(w => {
-                            if (w.length > 3 && cvKey.includes(w)) {
-                                matchCount += 0.4; // Partial word overlap (balanced)
-                            }
-                        });
-                    }
-                });
-            });
-            
-            // Boost score based on overlaps and Check Point familiarity
-            rawScore += (matchCount * 7); // balanced multiplier
-            rawScore += (cpMatches * 5); // balanced multiplier
-        } else {
-            rawScore += (cpMatches * 9); // balanced multiplier
+            const jdDocStr = jdText.substring(0, 2000) + " " + jdKeys.join(" ");
+            const jdEmbeddingTensor = await extractor(jdDocStr, { pooling: 'mean', normalize: true, truncation: true, maxLength: 512 });
+            const jdSim = this.cosineSimilarity(cvEmbedding, jdEmbeddingTensor.data);
+            jdMatchScoreVal = Math.min(100, Math.max(0, Math.round((jdSim - 0.15) * 180)));
         }
 
-        // Add minimal entropy for slight variance using the seeded RNG
-        let score = Math.min(Math.max(Math.floor(rawScore + (rng.next() * 12)), 20), 96);
-        if (!hasJD) score -= 20; // Balanced penalty for lack of contextual JD
+        // 4. Overall Score
+        let score = Math.round((industryFitScoreVal + (hasJD ? jdMatchScoreVal : industryFitScoreVal)) / 2);
+
+        // Build RNG fallback for deterministic selection of text templates using the newly generated mathematically coherent 'score'
+        let currentSeed = Math.abs(score * 9301 + 49297);
+        const rng = {
+            next: function () {
+                currentSeed = (currentSeed * 9301 + 49297) % 233280;
+                return currentSeed / 233280;
+            },
+            pick: function (arr) {
+                return arr[Math.floor(this.next() * arr.length)];
+            }
+        };
 
         let verdict = "Solid Match";
         if (score >= 75) verdict = "Strong Hire";
@@ -318,8 +317,12 @@ class AIService {
         else verdict = "Preliminary Screening";
 
         let summary, pros, cons, detailedEval, conclusion;
-        let industryFitScore, industryFitRationale;
-        let jdMatchScore, jdMatchRationale;
+        let industryFitScore = industryFitScoreVal;
+        let jdMatchScore = jdMatchScoreVal;
+        
+        let jdMatchRationale = `The model computed the semantic Cosine Similarity between ${candidateName}'s CV and the Job Description embeddings. The score mathematically reflects an alignment of ${jdMatchScore}% between the documents relative to the threshold.`;
+        let industryFitRationale = `The neural net evaluated ${candidateName.split(' ')[0]}'s background against a vector space of expected industry keywords. A geometric correlation with the enterprise technology matrix resulted in a fit score of ${industryFitScore}%.`;
+        
         const firstName = candidateName.split(' ')[0];
 
         // --- WORKING RIGHTS EXTRACTION LOGIC ---

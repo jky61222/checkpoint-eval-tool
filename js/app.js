@@ -1,3 +1,5 @@
+// No static imports here. We use dynamic imports to support file:// protocol Execution
+
 document.addEventListener('DOMContentLoaded', () => {
     // DOM Elements
     const cvUpload = document.getElementById('cv-upload');
@@ -16,6 +18,45 @@ document.addEventListener('DOMContentLoaded', () => {
     // State
     let cvFile = null;
     let jdFile = null;
+
+    let sentimentClassifier = null;
+
+    async function analyzeTextSentiment(text, onStatusChange = null) {
+        if (!text) return null;
+
+        try {
+            // Load the model if it hasn't been loaded yet
+            if (!sentimentClassifier) {
+                if (onStatusChange) {
+                    onStatusChange("Loading Sentiment AI model (~60MB download)...");
+                }
+                
+                // Dynamically import from CDN to avoid CORS 'module' execution blocks on local file:// opens
+                const transformers = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers');
+                transformers.env.allowLocalModels = false;
+                transformers.env.useBrowserCache = true;
+                
+                // Using the specific, fast model requested by the user
+                sentimentClassifier = await transformers.pipeline('sentiment-analysis', 'Xenova/distilbert-base-uncased-finetuned-sst-2-english');
+            }
+
+            if (onStatusChange) {
+                onStatusChange("Analyzing CV Tone/Sentiment...");
+            }
+            
+            // Run the model
+            const result = await sentimentClassifier(text);
+
+            return {
+                label: result[0].label,
+                score: (result[0].score * 100).toFixed(1)
+            };
+
+        } catch (error) {
+            console.error("Transformers.js Error:", error);
+            return null;
+        }
+    }
 
     // Dropzone setup helper
     function setupDropzone(dropzone, input, statusEl, isCV) {
@@ -89,6 +130,17 @@ document.addEventListener('DOMContentLoaded', () => {
         resultsDashboard.classList.add('hidden');
         resultsLoading.classList.remove('hidden');
 
+        // Reset sentiment loading state
+        const sentimentLabel = document.getElementById('sentiment-label');
+        const sentimentScoreText = document.getElementById('sentiment-score-text');
+        const sentimentIcon = document.getElementById('sentiment-icon');
+        
+        sentimentLabel.textContent = "Analyzing...";
+        sentimentLabel.style.color = "var(--text-color)";
+        sentimentScoreText.textContent = "Loading AI Model...";
+        sentimentIcon.className = "ph ph-spinner ph-spin";
+        sentimentIcon.style.color = "var(--accent-blue)";
+
         try {
             // Parse documents (frontend parsing)
             const cvText = await DocumentParser.parseFile(cvFile);
@@ -101,14 +153,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const jdText = jdFile ? await DocumentParser.parseFile(jdFile) : "";
 
-            // Execute AI Mock call (defaulting to English logically)
-            const analysis = await AIService.analyze(cvText, jdText);
+            // Execute AI Mock call and Sentiment Analysis in parallel
+            const [analysis, sentimentResult] = await Promise.all([
+                AIService.analyze(cvText, jdText, (statusMsg) => {
+                    document.querySelector('#results-loading p').textContent = statusMsg;
+                }),
+                analyzeTextSentiment(cvText, (statusMsg) => {
+                    sentimentScoreText.textContent = statusMsg;
+                })
+            ]);
 
             // Populate Dashboard
             renderResults(analysis);
+            
+            // Populate Sentiment Result
+            if (sentimentResult) {
+                sentimentLabel.textContent = sentimentResult.label;
+                sentimentScoreText.textContent = `${sentimentResult.score}% Confidence Score`;
+                
+                sentimentIcon.classList.remove('ph-spinner', 'ph-spin');
+                if (sentimentResult.label === 'POSITIVE') {
+                    sentimentIcon.classList.add('ph-smiley');
+                    sentimentIcon.style.color = 'var(--accent-green)';
+                    sentimentLabel.style.color = 'var(--accent-green)';
+                } else if (sentimentResult.label === 'NEGATIVE') {
+                    sentimentIcon.classList.add('ph-smiley-sad');
+                    sentimentIcon.style.color = 'var(--accent-red)';
+                    sentimentLabel.style.color = 'var(--accent-red)';
+                } else {
+                    sentimentIcon.classList.add('ph-smiley-meh');
+                    sentimentIcon.style.color = 'var(--accent-blue)';
+                    sentimentLabel.style.color = 'var(--accent-blue)';
+                }
+            } else {
+                sentimentLabel.textContent = "Analysis Failed";
+                sentimentScoreText.textContent = "Could not parse sentiment.";
+                sentimentIcon.className = "ph ph-warning";
+                sentimentIcon.style.color = "var(--accent-red)";
+            }
 
         } catch (error) {
-            alert("Error parsing document. Check console.");
+            console.error("Analysis Pipeline Error:", error);
+            alert(`Analysis Failed: ${error.message || error}\nPlease check the Developer Console for more details.`);
             resultsLoading.classList.add('hidden');
             resultsIdle.classList.remove('hidden');
         }

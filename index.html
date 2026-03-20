@@ -58,6 +58,7 @@
                     <i class="ph ph-sparkle"></i>
                     <span data-i18n="analyze_btn">Analyze Candidate</span>
                 </button>
+
             </section>
 
             <!-- Right Column: Results Dashboard -->
@@ -138,6 +139,16 @@
                             <h3><i class="ph ph-thumbs-down"></i> <span data-i18n="cons">Cons / Weaknesses</span></h3>
                             <ul id="cons-list"></ul>
                         </div>
+                        <div class="dashboard-card" style="grid-column: 1 / -1;">
+                            <h3><i class="ph ph-brain"></i> Tone & Sentiment Analysis</h3>
+                            <div class="granular-score-wrapper" style="align-items: center; justify-content: flex-start; gap: 1rem;">
+                                <i id="sentiment-icon" class="ph ph-spinner ph-spin" style="font-size: 2rem; color: var(--accent-blue);"></i>
+                                <div>
+                                    <span class="granular-score" style="font-size: 1.2rem; margin-bottom: 0.25rem; text-align: left;" id="sentiment-label">Analyzing...</span>
+                                    <p class="granular-rationale" id="sentiment-score-text" style="margin: 0;">Loading AI Model...</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="dashboard-card detailed-eval-card">
@@ -166,8 +177,10 @@
     <!-- Application Logic -->
     <script src="js/i18n.js"></script>
     <script src="js/parser.js"></script>
-    <script src="js/ai-mock.js?v=8"></script>
-    <script src="js/app.js?v=2"></script>
+    <script src="js/ai-mock.js?v=12"></script>
+    
+    <!-- Main Controller -->
+    <script src="js/app.js?v=6"></script>
 </body>
 
 </html>
