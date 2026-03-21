@@ -14,6 +14,20 @@ class AIService {
     }
 
     // Helper to extract a mock name intelligently from CV text
+    static async preload() {
+        if (!this.extractor) {
+            try {
+                const transformers = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers');
+                transformers.env.allowLocalModels = false;
+                transformers.env.useBrowserCache = true;
+                this.extractor = await transformers.pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+                console.log("[AI System] Semantic Embedding model pre-loaded successfully.");
+            } catch (e) {
+                console.warn("[AI System] Preloading semantic model failed, will load on demand.", e);
+            }
+        }
+    }
+
     static extractMockName(cvText) {
         if (!cvText) return "Alex Mercer";
 

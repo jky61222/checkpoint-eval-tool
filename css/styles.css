@@ -599,3 +599,53 @@ body.dark-theme {
         grid-template-columns: 1fr;
     }
 }
+
+/* =========================================
+   PDF EXPORT STYLES (html2pdf mode)
+/* =========================================
+   PDF EXPORT STYLES (html2pdf mode)
+   ========================================= */
+body.pdf-export {
+    min-height: auto !important;
+}
+
+/* Hide web-only elements */
+.pdf-export .app-header,
+.pdf-export .input-section,
+.pdf-export #analyze-btn,
+.pdf-export .dashboard-actions {
+    display: none !important;
+}
+
+/* Redefine grids for full A4 width */
+.pdf-export .workspace {
+    display: block !important;
+    padding: 0 !important;
+}
+
+.pdf-export .dashboard-grid {
+    display: block !important;
+}
+
+.pdf-export .dashboard-card {
+    width: 100% !important;
+    margin-bottom: 5mm !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+}
+
+.pdf-export .verdict-banner {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+}
+
+/* Page Breaks for A4 Layout */
+.pdf-page-break {
+    page-break-before: always !important;
+    break-before: page !important;
+}
+
+/* Verdict Circle PDF Fixes */
+.pdf-export .circular-chart .circle-bg {
+    stroke: #e2e8f0 !important; /* Light gray track for white bg */
+}
