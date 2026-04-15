@@ -135,6 +135,143 @@ document.addEventListener('DOMContentLoaded', () => {
         const sentimentScoreText = document.getElementById('sentiment-score-text');
         const sentimentIcon = document.getElementById('sentiment-icon');
         
+// No static imports here. We use dynamic imports to support file:// protocol Execution
+
+document.addEventListener('DOMContentLoaded', () => {
+    // DOM Elements
+    const cvUpload = document.getElementById('cv-upload');
+    const jdUpload = document.getElementById('jd-upload');
+    const cvDropzone = document.getElementById('cv-dropzone');
+    const jdDropzone = document.getElementById('jd-dropzone');
+    const cvStatus = document.getElementById('cv-status');
+    const jdStatus = document.getElementById('jd-status');
+    const analyzeBtn = document.getElementById('analyze-btn');
+    const exportPdfBtn = document.getElementById('export-pdf-btn');
+
+    const resultsIdle = document.getElementById('results-idle');
+    const resultsLoading = document.getElementById('results-loading');
+    const resultsDashboard = document.getElementById('results-dashboard');
+
+    // State
+    let cvFile = null;
+    let jdFile = null;
+
+    let sentimentClassifier = null;
+
+    async function analyzeTextSentiment(text, onStatusChange = null) {
+        if (!text) return null;
+
+        try {
+            // Load the model if it hasn't been loaded yet
+            if (!sentimentClassifier) {
+                if (onStatusChange) {
+                    onStatusChange("Loading Sentiment AI model (~60MB download)...");
+                }
+                
+                // Dynamically import from CDN to avoid CORS 'module' execution blocks on local file:// opens
+                const transformers = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers');
+                transformers.env.allowLocalModels = false;
+                transformers.env.useBrowserCache = true;
+                
+                // Using the specific, fast model requested by the user
+                sentimentClassifier = await transformers.pipeline('sentiment-analysis', 'Xenova/distilbert-base-uncased-finetuned-sst-2-english');
+            }
+
+            if (onStatusChange) {
+                onStatusChange("Analyzing CV Tone/Sentiment...");
+            }
+            
+            // Run the model
+            const result = await sentimentClassifier(text);
+
+            return {
+                label: result[0].label,
+                score: (result[0].score * 100).toFixed(1)
+            };
+
+        } catch (error) {
+            console.error("Transformers.js Error:", error);
+            return null;
+        }
+    }
+
+    // Dropzone setup helper
+    function setupDropzone(dropzone, input, statusEl, isCV) {
+        dropzone.addEventListener('click', () => input.click());
+
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('dragover');
+        });
+
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+
+            if (e.dataTransfer.files.length) {
+                handleFile(e.dataTransfer.files[0], dropzone, statusEl, isCV);
+            }
+        });
+
+        input.addEventListener('change', (e) => {
+            if (e.target.files.length) {
+                handleFile(e.target.files[0], dropzone, statusEl, isCV);
+            }
+        });
+    }
+
+    function handleFile(file, dropzone, statusEl, isCV) {
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (ext !== 'pdf' && ext !== 'docx') {
+            statusEl.textContent = "Error: Only PDF or DOCX allowed";
+            statusEl.style.color = "var(--accent-red)";
+            dropzone.classList.remove('success');
+            if (isCV) cvFile = null;
+            else jdFile = null;
+            checkReadyState();
+            return;
+        }
+
+        statusEl.textContent = file.name;
+        statusEl.style.color = "var(--accent-green)";
+        dropzone.classList.add('success');
+
+        if (isCV) cvFile = file;
+        else jdFile = file;
+
+        checkReadyState();
+    }
+
+    // Setup D&D
+    setupDropzone(cvDropzone, cvUpload, cvStatus, true);
+    setupDropzone(jdDropzone, jdUpload, jdStatus, false);
+
+    function checkReadyState() {
+        if (cvFile && jdFile) {
+            analyzeBtn.removeAttribute('disabled');
+            analyzeBtn.classList.add('pulse-animation');
+        } else {
+            analyzeBtn.setAttribute('disabled', 'true');
+            analyzeBtn.classList.remove('pulse-animation');
+        }
+    }
+
+    // Analysis Execution
+    analyzeBtn.addEventListener('click', async () => {
+        // UI State -> Loading
+        resultsIdle.classList.add('hidden');
+        resultsDashboard.classList.add('hidden');
+        resultsLoading.classList.remove('hidden');
+
+        // Reset sentiment loading state
+        const sentimentLabel = document.getElementById('sentiment-label');
+        const sentimentScoreText = document.getElementById('sentiment-score-text');
+        const sentimentIcon = document.getElementById('sentiment-icon');
+        
         sentimentLabel.textContent = "Analyzing...";
         sentimentLabel.style.color = "var(--text-color)";
         sentimentScoreText.textContent = "Loading AI Model...";
@@ -171,6 +308,31 @@ document.addEventListener('DOMContentLoaded', () => {
                 sentimentLabel.textContent = sentimentResult.label;
                 sentimentScoreText.textContent = `${sentimentResult.score}% Confidence Score`;
                 
+                // --- Generate Dynamic AI Insights ---
+                const insightsEl = document.getElementById('sentiment-insights-text');
+                if (insightsEl) {
+                    const lowerText = cvText.toLowerCase();
+                    let foundKeywords = [];
+                    let insightText = "";
+
+                    if (sentimentResult.label === 'POSITIVE') {
+                        const posWords = ['achieved', 'led', 'expert', 'managed', 'successful', 'delivered', 'improved', 'increased', 'developed', 'spearheaded', 'innovated'];
+                        foundKeywords = posWords.filter(w => lowerText.includes(w)).slice(0, 3);
+                        const kwString = foundKeywords.length > 0 ? foundKeywords.map(w => `'${w}'`).join(', ') : 'action-oriented verbs';
+                        insightText = `The tone is professional and results-oriented, featuring strong action verbs like ${kwString}.`;
+                    } else if (sentimentResult.label === 'NEGATIVE') {
+                        const negWords = ['failed', 'issue', 'lack', 'poor', 'struggled', 'unable', 'limited', 'problem', 'delayed', 'gap', 'quit'];
+                        foundKeywords = negWords.filter(w => lowerText.includes(w)).slice(0, 3);
+                        const kwString = foundKeywords.length > 0 ? foundKeywords.map(w => `'${w}'`).join(', ') : 'passive or cautious phrasing';
+                        insightText = `The analysis detected a cautious or risk-heavy tone, potentially due to words like ${kwString}.`;
+                    } else {
+                        insightText = "The tone is neutral and factual, avoiding strong emotional or polarizing vocabulary.";
+                    }
+                    
+                    insightsEl.textContent = insightText;
+                }
+                //-------------------------------------
+                
                 sentimentIcon.classList.remove('ph-spinner', 'ph-spin');
                 if (sentimentResult.label === 'POSITIVE') {
                     sentimentIcon.classList.add('ph-smiley');
@@ -188,6 +350,10 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 sentimentLabel.textContent = "Analysis Failed";
                 sentimentScoreText.textContent = "Could not parse sentiment.";
+                
+                const insightsEl = document.getElementById('sentiment-insights-text');
+                if (insightsEl) insightsEl.textContent = "System error during tone extraction.";
+
                 sentimentIcon.className = "ph ph-warning";
                 sentimentIcon.style.color = "var(--accent-red)";
             }

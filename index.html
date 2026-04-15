@@ -142,13 +142,15 @@
                         </div>
                         <div class="dashboard-card" style="grid-column: 1 / -1;">
                             <h3><i class="ph ph-brain"></i> Tone & Sentiment Analysis</h3>
-                            <div class="granular-score-wrapper" style="align-items: center; justify-content: flex-start; gap: 1rem;">
+                            <div class="granular-score-wrapper" style="align-items: center; justify-content: flex-start; gap: 1rem; margin-bottom: 1rem;">
                                 <i id="sentiment-icon" class="ph ph-spinner ph-spin" style="font-size: 2rem; color: var(--accent-blue);"></i>
                                 <div>
                                     <span class="granular-score" style="font-size: 1.2rem; margin-bottom: 0.25rem; text-align: left;" id="sentiment-label">Analyzing...</span>
                                     <p class="granular-rationale" id="sentiment-score-text" style="margin: 0;">Loading AI Model...</p>
                                 </div>
                             </div>
+                            <h4 style="margin-bottom: 0.5rem; font-size: 1rem; color: var(--text-color);"><i class="ph ph-lightbulb"></i> AI Insights</h4>
+                            <p class="granular-rationale" id="sentiment-insights-text" style="margin: 0;">Awaiting analysis...</p>
                         </div>
                     </div>
 
@@ -181,7 +183,7 @@
     <script src="js/ai-mock.js?v=13"></script>
     
     <!-- Main Controller -->
-    <script src="js/app.js?v=13"></script>
+    <script src="js/app.js?v=15"></script>
 </body>
 
 </html>
