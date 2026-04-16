@@ -169,23 +169,44 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Populate Sentiment Result
             if (sentimentResult) {
+                // --- Contextual Sentiment Override for Tech/Professional CVs ---
+                const lowerText = cvText.toLowerCase();
+                const techNeutralPhrases = ['issue', 'issues', 'risk', 'limited', 'vulnerability', 'incident', 'challenge', 'problem'];
+                const actionVerbs = ['resolved', 'managed', 'mitigated', 'solved', 'fixed', 'addressed', 'improved', 'achieved', 'led'];
+                
+                let isTechOverride = false;
+                
+                if (sentimentResult.label === 'NEGATIVE') {
+                    const hasTechTerms = techNeutralPhrases.some(w => lowerText.includes(w));
+                    const hasActionVerbs = actionVerbs.some(w => lowerText.includes(w));
+                    if (hasTechTerms && hasActionVerbs) {
+                        sentimentResult.label = 'POSITIVE'; // Override Sentiment Flag!
+                        isTechOverride = true;
+                    }
+                }
+
                 sentimentLabel.textContent = sentimentResult.label;
                 sentimentScoreText.textContent = `${sentimentResult.score}% Confidence Score`;
                 
                 // --- Generate Dynamic AI Insights ---
                 const insightsEl = document.getElementById('sentiment-insights-text');
                 if (insightsEl) {
-                    const lowerText = cvText.toLowerCase();
                     let foundKeywords = [];
                     let insightText = "";
 
                     if (sentimentResult.label === 'POSITIVE') {
-                        const posWords = ['achieved', 'led', 'expert', 'managed', 'successful', 'delivered', 'improved', 'increased', 'developed', 'spearheaded', 'innovated'];
-                        foundKeywords = posWords.filter(w => lowerText.includes(w)).slice(0, 3);
-                        const kwString = foundKeywords.length > 0 ? foundKeywords.map(w => `'${w}'`).join(', ') : 'action-oriented verbs';
-                        insightText = `The tone is professional and results-oriented, featuring strong action verbs like ${kwString}.`;
+                        if (isTechOverride) {
+                            foundKeywords = techNeutralPhrases.filter(w => lowerText.includes(w)).slice(0, 3);
+                            const kwString = foundKeywords.length > 0 ? foundKeywords.map(w => `'${w}'`).join(', ') : 'technical challenges';
+                            insightText = `Demonstrates strong problem-solving phrasing, properly contextualizing terms like ${kwString} as solvable achievements.`;
+                        } else {
+                            const posWords = ['achieved', 'led', 'expert', 'managed', 'successful', 'delivered', 'improved', 'increased', 'developed', 'spearheaded', 'innovated'];
+                            foundKeywords = posWords.filter(w => lowerText.includes(w)).slice(0, 3);
+                            const kwString = foundKeywords.length > 0 ? foundKeywords.map(w => `'${w}'`).join(', ') : 'action-oriented verbs';
+                            insightText = `The tone is professional and results-oriented, featuring strong action verbs like ${kwString}.`;
+                        }
                     } else if (sentimentResult.label === 'NEGATIVE') {
-                        const negWords = ['failed', 'issue', 'lack', 'poor', 'struggled', 'unable', 'limited', 'problem', 'delayed', 'gap', 'quit'];
+                        const negWords = ['failed', 'lack', 'poor', 'struggled', 'unable', 'delayed', 'gap', 'quit'];
                         foundKeywords = negWords.filter(w => lowerText.includes(w)).slice(0, 3);
                         const kwString = foundKeywords.length > 0 ? foundKeywords.map(w => `'${w}'`).join(', ') : 'passive or cautious phrasing';
                         insightText = `The analysis detected a cautious or risk-heavy tone, potentially due to words like ${kwString}.`;
