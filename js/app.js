@@ -158,7 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const [analysis, sentimentResult] = await Promise.all([
                 AIService.analyze(cvText, jdText, (statusMsg) => {
                     document.querySelector('#results-loading p').textContent = statusMsg;
-                }),
+                }, cvFile.name),
                 analyzeTextSentiment(cvText, (statusMsg) => {
                     sentimentScoreText.textContent = statusMsg;
                 })

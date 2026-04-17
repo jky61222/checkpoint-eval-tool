@@ -28,84 +28,90 @@ class AIService {
         }
     }
 
-    static extractMockName(cvText) {
-        if (!cvText) return "Alex Mercer";
+    static extractMockName(cvText, cvFileName = "") {
+        if (!cvText && !cvFileName) return "Unknown Candidate";
 
         const badKeywords = [
+            'with regard', 'best regards', 'sincerely', 'curriculum vitae', 'resume', 'page',
             'profile', 'summary', 'experience', 'education', 'skills', 'objective', 
             'personal', 'projects', 'certifications', 'details', 'web', 'application',
             'contact', 'information', 'about', 'history', 'employment', 'name', 'phone', 'email',
             'technologies', 'languages', 'hobbies', 'interests', 'references',
             'developer', 'engineer', 'manager', 'director', 'specialist', 
             'consultant', 'analyst', 'administrator', 'executive', 'assistant',
-            'senior', 'junior', 'lead', 'head', 'chief', 'principal', 'curriculum', 'vitae', 'resume', 'page'
+            'senior', 'junior', 'lead', 'head', 'chief', 'principal'
         ];
 
-        // 1. Remove common resume boilerplate from the very beginning
-        let textToSearch = cvText.replace(/^(resume|curriculum vitae|cv|page \d+)\s*/i, "");
+        let extractedName = null;
 
-        // 2. Scan the first few lines to find a likely name
-        const lines = textToSearch.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-
-        for (let i = 0; i < Math.min(10, lines.length); i++) {
-            let line = lines[i];
-
-            // Remove emails, URLs, phone numbers, and common labels from the line
-            line = line.replace(/[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}/g, '');
-            line = line.replace(/https?:\/\/[^\s]+/g, '');
-            line = line.replace(/linkedin\.com[^\s]*/gi, '');
-            line = line.replace(/github\.com[^\s]*/gi, '');
-            line = line.replace(/ph:\s*|phone:\s*|tel:\s*|mobile:\s*|email:\s*/gi, '');
-            line = line.replace(/\+?\d[\d\s.-]{7,}\d/g, ''); // phone numbers
-            
-            // Extract alphabetic words that look like names
-            const words = line.split(/[^a-zA-Z\u00C0-\u024F]+/).filter(w => w.length > 0);
-
-            // Ignore lines with numbers (often addresses, dates, or phone numbers)
-            if (/[0-9]/.test(line)) continue;
-
-            // Ignore lines that contain typical section headers, job titles, or project names
-            const lowerLine = line.toLowerCase();
-            
-            // Check if line includes any of the bad words
-            if (badKeywords.some(bk => lowerLine.includes(bk))) continue;
-
-            // Filter out extremely short words that aren't typical name parts
-            const validWords = words.filter(w => w.length > 1);
-
-            // If we have 2, 3, or 4 words left on this isolated line, it's highly likely the candidate's name
-            if (validWords.length >= 2 && validWords.length <= 4 && words.length <= 5) {
-                return validWords.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+        // 1. Prioritize Explicit Labels (Regex) e.g., "Candidate: John Doe" or "Name: Jane Doe"
+        if (cvText) {
+            const labelRegex = /(?:candidate|Name|applicant name)\s*:\s*([A-Z][a-zA-Z\u00C0-\u024F]+(?:\s+[A-Z][a-zA-Z\u00C0-\u024F]+)+)/i;
+            const labelMatch = cvText.match(labelRegex);
+            if (labelMatch && labelMatch[1]) {
+                const potentialName = labelMatch[1].trim();
+                // Ensure the extracted target is not just a blacklisted phrase
+                if (!badKeywords.some(bk => potentialName.toLowerCase().includes(bk))) {
+                    extractedName = potentialName;
+                }
             }
         }
 
-        // 3. Fallback: If no single clean line found, just take the first 2 alphabetical words from the sanitized text
-        const fallbackWords = textToSearch.replace(/[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}/g, '')
-                                          .replace(/https?:\/\/[^\s]+/g, '')
-                                          .replace(/\+?\d[\d\s.-]{7,}\d/g, '')
-                                          .split(/[^a-zA-Z\u00C0-\u024F]+/)
-                                          .filter(w => w.length > 1 && !badKeywords.includes(w.toLowerCase()));
+        // 2. Original heuristics (Top lines scan)
+        if (!extractedName && cvText) {
+            let textToSearch = cvText.replace(/^(resume|curriculum vitae|cv|page \d+)\s*/i, "");
+            const lines = textToSearch.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        if (fallbackWords.length >= 2) {
-             return fallbackWords.slice(0, 2).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+            for (let i = 0; i < Math.min(10, lines.length); i++) {
+                let line = lines[i];
+                line = line.replace(/[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}/g, '');
+                line = line.replace(/https?:\/\/[^\s]+/g, '');
+                line = line.replace(/linkedin\.com[^\s]*/gi, '');
+                line = line.replace(/github\.com[^\s]*/gi, '');
+                line = line.replace(/ph:\s*|phone:\s*|tel:\s*|mobile:\s*|email:\s*/gi, '');
+                line = line.replace(/\+?\d[\d\s.-]{7,}\d/g, ''); 
+                
+                const words = line.split(/[^a-zA-Z\u00C0-\u024F]+/).filter(w => w.length > 0);
+                if (/[0-9]/.test(line)) continue;
+                
+                const lowerLine = line.toLowerCase();
+                // Check against the expanded blacklist
+                if (badKeywords.some(bk => lowerLine.includes(bk))) continue;
+
+                const validWords = words.filter(w => w.length > 1);
+                if (validWords.length >= 2 && validWords.length <= 4 && words.length <= 5) {
+                    extractedName = validWords.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+                    break;
+                }
+            }
         }
-        
-        // 4. Absolute Final Fallback: Scan the top 30% of the raw text for two consecutive capitalized words
-        const topText = cvText.substring(0, Math.floor(cvText.length * 0.3));
-        const regex = /([A-Z][a-z]+)\s+([A-Z][a-z]+)/g;
-        let match;
-        
-        while ((match = regex.exec(topText)) !== null) {
-            const word1 = match[1].toLowerCase();
-            const word2 = match[2].toLowerCase();
+
+        // 3. Fallback to Filename Parsing
+        if (!extractedName && cvFileName) {
+            // Remove extension
+            let baseName = cvFileName.replace(/\.[^/.]+$/, "");
+            // Split strictly by common agency separators (dash, underscore)
+            let parts = baseName.split(/[-_|,]/).map(p => p.trim());
             
-            // Ensure neither matched word is in the bad keyword list
-            if (!badKeywords.includes(word1) && !badKeywords.includes(word2)) {
-                return `${match[1]} ${match[2]}`;
+            for (let part of parts) {
+                let words = part.split(/\s+/).filter(w => w.length > 1);
+                // Assume a name is between 2 to 4 words.
+                if (words.length >= 2 && words.length <= 4) {
+                    let hasBad = badKeywords.some(bk => part.toLowerCase().includes(bk));
+                    if (!hasBad) {
+                         extractedName = words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+                         break;
+                    }
+                }
             }
         }
         
-        return "Unknown Candidate"; // True absolute fallback if absolutely nothing matches
+        // 4. Final safety net
+        if (!extractedName) {
+            extractedName = "Unknown Candidate";
+        }
+
+        return extractedName;
     }
 
     static extractKeywords(text, count = 5) {
@@ -224,7 +230,7 @@ class AIService {
         return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
     }
 
-    static async analyze(cvText, jdText, onStatusChange = null) {
+    static async analyze(cvText, jdText, onStatusChange = null, cvFileName = "") {
         if (onStatusChange) onStatusChange("Initializing Neural Net...");
         
         let extractor = this.extractor;
@@ -238,7 +244,7 @@ class AIService {
         }
 
         const hasJD = jdText && jdText.length > 50;
-        const candidateName = this.extractMockName(cvText);
+        const candidateName = this.extractMockName(cvText, cvFileName);
 
         const cvKeys = this.extractKeywords(cvText, 5);
         const jdKeys = hasJD ? this.extractKeywords(jdText, 5) : [];
