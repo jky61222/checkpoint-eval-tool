@@ -46,13 +46,17 @@ class AIService {
 
         // 1. Prioritize Explicit Labels (Regex) e.g., "Candidate: John Doe" or "Name: Jane Doe"
         if (cvText) {
-            const labelRegex = /(?:candidate|Name|applicant name)\s*:\s*([A-Z][a-zA-Z\u00C0-\u024F]+(?:\s+[A-Z][a-zA-Z\u00C0-\u024F]+)+)/i;
+            const labelRegex = /(?:candidate|name|applicant name)\s*:\s*(.*?)(?=\s*(?:Role|Email|Phone|Mobile|Address|Location|Relevant|Education|$|\n))/i;
             const labelMatch = cvText.match(labelRegex);
             if (labelMatch && labelMatch[1]) {
-                const potentialName = labelMatch[1].trim();
+                let potentialName = labelMatch[1].trim();
+                
+                // Sanitize string to strip out accidentally clumped headers entirely
+                potentialName = potentialName.replace(/\s*(Role|Email|Phone|Mobile|Address).*$/i, '').trim();
+                
                 // Ensure the extracted target is not just a blacklisted phrase
-                if (!badKeywords.some(bk => potentialName.toLowerCase().includes(bk))) {
-                    extractedName = potentialName;
+                if (potentialName.length > 2 && !badKeywords.some(bk => potentialName.toLowerCase().includes(bk))) {
+                    extractedName = potentialName.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
                 }
             }
         }
