@@ -198,23 +198,23 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (isTechOverride) {
                             foundKeywords = techNeutralPhrases.filter(w => lowerText.includes(w)).slice(0, 3);
                             const kwString = foundKeywords.length > 0 ? foundKeywords.map(w => `'${w}'`).join(', ') : 'technical challenges';
-                            insightText = `Demonstrates strong problem-solving phrasing, properly contextualizing terms like ${kwString} as solvable achievements.`;
+                            insightText = `<div style="margin-bottom:0.5rem;"><strong>What:</strong> The candidate explicitly detailed resolving technical issues or facing challenges using terms like ${kwString} alongside strong action verbs.</div><div><strong>Why:</strong> Demonstrating proactive risk mitigation and leadership in high-stress environments heavily weights the sentiment positively.</div>`;
                         } else {
                             const posWords = ['achieved', 'led', 'expert', 'managed', 'successful', 'delivered', 'improved', 'increased', 'developed', 'spearheaded', 'innovated'];
                             foundKeywords = posWords.filter(w => lowerText.includes(w)).slice(0, 3);
                             const kwString = foundKeywords.length > 0 ? foundKeywords.map(w => `'${w}'`).join(', ') : 'action-oriented verbs';
-                            insightText = `The tone is professional and results-oriented, featuring strong action verbs like ${kwString}.`;
+                            insightText = `<div style="margin-bottom:0.5rem;"><strong>What:</strong> The candidate structured their execution history using high-impact vocabulary like ${kwString}.</div><div><strong>Why:</strong> A tone that is consistently results-oriented and professional projects strong leadership and autonomous execution capabilities.</div>`;
                         }
                     } else if (sentimentResult.label === 'NEGATIVE') {
                         const negWords = ['failed', 'lack', 'poor', 'struggled', 'unable', 'delayed', 'gap', 'quit'];
                         foundKeywords = negWords.filter(w => lowerText.includes(w)).slice(0, 3);
                         const kwString = foundKeywords.length > 0 ? foundKeywords.map(w => `'${w}'`).join(', ') : 'passive or cautious phrasing';
-                        insightText = `The analysis detected a cautious or risk-heavy tone, potentially due to words like ${kwString}.`;
+                        insightText = `<div style="margin-bottom:0.5rem;"><strong>What:</strong> The analysis detected a cautious or risk-heavy tone, significantly influenced by words like ${kwString}.</div><div><strong>Why:</strong> The lack of ownership descriptors combined with negatively polarized vocabulary indicates friction points that require further human validation.</div>`;
                     } else {
-                        insightText = "The tone is neutral and factual, avoiding strong emotional or polarizing vocabulary.";
+                        insightText = `<div style="margin-bottom:0.5rem;"><strong>What:</strong> The parsed documentation relies heavily on factual, unemotional vocabulary devoid of strong sentiment modifiers.</div><div><strong>Why:</strong> A baseline neutral tone lacks the required aggressive success indicators but signals a stable, standard professional communication style.</div>`;
                     }
                     
-                    insightsEl.textContent = insightText;
+                    insightsEl.innerHTML = insightText;
                 }
                 //-------------------------------------
                 
